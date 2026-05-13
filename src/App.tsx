@@ -95,7 +95,7 @@ export default function App() {
       setStatusDetail('Connecting to Vercel Blob...');
 
       return await upload(createSafeBlobPathname(selectedFile), selectedFile, {
-        access: 'private',
+        access: 'public',
         handleUploadUrl: '/api/blob-upload',
         contentType: selectedFile.type || 'audio/mpeg',
         clientPayload: JSON.stringify({ filename: selectedFile.name, size: selectedFile.size }),
