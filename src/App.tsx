@@ -1,0 +1,249 @@
+import React, { useState, useRef } from 'react';
+import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { motion, AnimatePresence } from 'motion/react';
+
+export default function App() {
+  const [file, setFile] = useState<File | null>(null);
+  const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
+  const [errorMessage, setErrorMessage] = useState('');
+  const [result, setResult] = useState<Record<string, string> | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    if (e.target.files && e.target.files[0]) {
+      const selected = e.target.files[0];
+      if (selected.type.includes('audio') || selected.name.endsWith('.mp3') || selected.name.endsWith('.wav')) {
+        setFile(selected);
+        setStatus('idle');
+        setErrorMessage('');
+        setResult(null);
+      } else {
+        setErrorMessage('Please upload a valid MP3 or WAV file.');
+      }
+    }
+  };
+
+  const handleDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    if (e.dataTransfer.files && e.dataTransfer.files[0]) {
+      const selected = e.dataTransfer.files[0];
+      if (selected.type.includes('audio') || selected.name.endsWith('.mp3') || selected.name.endsWith('.wav')) {
+        setFile(selected);
+        setStatus('idle');
+        setErrorMessage('');
+        setResult(null);
+      } else {
+        setErrorMessage('Please upload a valid MP3 or WAV file.');
+      }
+    }
+  };
+
+  const handleStart = async () => {
+    if (!file) return;
+
+    setStatus('uploading');
+    setErrorMessage('');
+    
+    // Create form data
+    const formData = new FormData();
+    formData.append('audio', file);
+
+    try {
+      setStatus('processing');
+      const response = await fetch('/api/separate', {
+        method: 'POST',
+        body: formData,
+      });
+
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || 'Failed to process audio.');
+      }
+
+      setResult(data.stems);
+      setStatus('done');
+    } catch (error) {
+      console.error(error);
+      setStatus('error');
+      setErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred.');
+    }
+  };
+
+  return (
+    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 font-sans overflow-hidden relative">
+      <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
+      <div className="absolute bottom-[-100px] right-[-100px] w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[150px] pointer-events-none"></div>
+
+      <div className="w-full max-w-3xl relative z-10 flex flex-col h-full flex-1 justify-center">
+        <header className="flex flex-col sm:flex-row justify-between items-center mb-12 border-b border-white/5 pb-6">
+          <div className="flex items-center gap-3 mb-4 sm:mb-0">
+            <div className="w-12 h-12 bg-indigo-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+              </svg>
+            </div>
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight text-white">AI Vocal <span className="font-light opacity-50">Remover</span></h1>
+            </div>
+          </div>
+          <div className="flex gap-4">
+            <div className="px-5 py-2.5 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium uppercase tracking-wider text-slate-400">
+              Powered by UVR5 (HTDemucs)
+            </div>
+          </div>
+        </header>
+
+        <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl p-8 flex flex-col w-full">
+            <AnimatePresence mode="wait">
+              {status === 'idle' && (
+                <motion.div
+                  key="upload"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  exit={{ opacity: 0, scale: 0.95 }}
+                  className="flex flex-col items-center"
+                >
+                  <div
+                    onClick={() => fileInputRef.current?.click()}
+                    onDragOver={(e) => e.preventDefault()}
+                    onDrop={handleDrop}
+                    className="h-64 bg-white/5 backdrop-blur-2xl border border-dashed border-white/20 rounded-3xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-white/10 transition-colors"
+                  >
+                    <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform mb-2">
+                       <Upload className="w-8 h-8 text-indigo-400" />
+                    </div>
+                    <p className="text-lg text-slate-300">
+                      {file ? file.name : <><span className="text-indigo-400 font-semibold">Drop your audio file</span> here</>}
+                    </p>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Supporting MP3, WAV (Max 50MB)</p>
+                  </div>
+                  <input
+                    type="file"
+                    ref={fileInputRef}
+                    onChange={handleFileChange}
+                    accept="audio/mpeg, audio/wav, .mp3, .wav"
+                    className="hidden"
+                  />
+
+                  {file && (
+                    <div className="w-full mt-6">
+                      <button
+                        onClick={handleStart}
+                        className="w-full py-5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl font-bold shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-3 transition-colors mt-2 uppercase tracking-wider"
+                      >
+                        <Play className="w-5 h-5 fill-current" />
+                        START EXTRACTION
+                      </button>
+                    </div>
+                  )}
+                </motion.div>
+              )}
+
+              {status === 'processing' && (
+                <motion.div
+                  key="processing"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="py-16 flex flex-col"
+                >
+                  <div className="flex-1 flex items-center gap-[2px] h-32 mb-12 justify-center opacity-80">
+                    <div className="w-1 h-12 bg-white/10 rounded-full animate-pulse"></div><div className="w-1 h-20 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.1s'}}></div><div className="w-1 h-32 bg-indigo-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)] animate-pulse" style={{animationDelay: '0.2s'}}></div><div className="w-1 h-24 bg-indigo-500 rounded-full animate-pulse" style={{animationDelay: '0.3s'}}></div><div className="w-1 h-16 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div><div className="w-1 h-28 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div><div className="w-1 h-14 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.6s'}}></div><div className="w-1 h-36 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.7s'}}></div><div className="w-1 h-20 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.8s'}}></div><div className="w-1 h-30 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.9s'}}></div><div className="w-1 h-18 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.0s'}}></div><div className="w-1 h-32 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.1s'}}></div><div className="w-1 h-22 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.2s'}}></div><div className="w-1 h-12 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.3s'}}></div><div className="w-1 h-32 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.4s'}}></div>
+                  </div>
+
+                  <div className="space-y-4">
+                    <div className="flex justify-between items-end text-xs">
+                      <div className="space-y-1">
+                        <span className="text-slate-400 block">Status</span>
+                        <span className="text-indigo-400 font-semibold animate-pulse">Extracting stems using deep learning...</span>
+                      </div>
+                      <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
+                    </div>
+                    <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden relative">
+                      <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-indigo-600/30 via-indigo-400/80 to-indigo-600/30 animate-[translateX_2s_linear_infinite]" style={{backgroundSize: '200% 100%'}}></div>
+                      <style>{`@keyframes translateX { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
+                    </div>
+                  </div>
+                </motion.div>
+              )}
+
+              {status === 'done' && result && (
+                <motion.div
+                  key="done"
+                  initial={{ opacity: 0, y: 10 }}
+                  animate={{ opacity: 1, y: 0 }}
+                  className="flex flex-col"
+                >
+                  <div className="flex justify-between items-start mb-8">
+                    <div>
+                      <h3 className="text-lg font-medium">{file?.name}</h3>
+                      <p className="text-xs text-slate-500 mt-1 uppercase tracking-tight">Separation Complete</p>
+                    </div>
+                    <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-[10px] font-bold rounded-md uppercase">Finished</span>
+                  </div>
+
+                  <div className="mt-4 pt-8 border-t border-white/5 flex flex-col gap-4">
+                    {Object.entries(result).map(([stem, url]) => (
+                       <div key={stem} className="flex-1 bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                         <div className="flex items-center gap-4 w-full">
+                           <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex flex-shrink-0 items-center justify-center text-indigo-400">
+                             <FileAudio className="w-6 h-6" />
+                           </div>
+                           <div className="flex-1 w-full max-w-[200px] sm:max-w-xs">
+                             <p className="text-sm font-semibold capitalize text-slate-200">{stem === 'other' ? 'Accompaniment (Other)' : stem}</p>
+                             <audio controls src={url} className="h-8 mt-2 w-full" />
+                           </div>
+                         </div>
+                         <a
+                            href={url}
+                            download={`${stem}-${file?.name}`}
+                            className="px-6 py-3 shrink-0 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] sm:text-xs font-bold uppercase transition-all flex items-center gap-2"
+                         >
+                            <Download className="w-4 h-4" /> Download
+                         </a>
+                       </div>
+                    ))}
+                  </div>
+
+                  <button
+                    onClick={() => {
+                      setStatus('idle');
+                      setFile(null);
+                      setResult(null);
+                    }}
+                    className="mt-8 mx-auto px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
+                  >
+                    Process another track
+                  </button>
+                </motion.div>
+              )}
+
+              {status === 'error' && (
+                <motion.div
+                  key="error"
+                  initial={{ opacity: 0, scale: 0.95 }}
+                  animate={{ opacity: 1, scale: 1 }}
+                  className="py-12 flex flex-col items-center justify-center text-center"
+                >
+                  <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl flex flex-col items-center">
+                    <div className="bg-rose-500/20 p-4 rounded-full mb-6 text-rose-400">
+                      <AlertCircle className="w-12 h-12" />
+                    </div>
+                    <h3 className="text-xl font-bold text-white mb-2">Processing Failed</h3>
+                    <p className="text-rose-400 mb-8 max-w-md">{errorMessage}</p>
+                    
+                    <button
+                      onClick={() => setStatus('idle')}
+                      className="px-6 py-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-xl transition-colors text-xs font-bold uppercase tracking-wider"
+                    >
+                      Try Again
+                    </button>
+                  </div>
+                </motion.div>
+              )}
+            </AnimatePresence>
+          </div>
+        </div>
+      </div>
+  );
+}

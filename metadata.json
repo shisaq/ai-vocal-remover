@@ -1,0 +1,6 @@
+{
+  "name": "AI Vocal Remover",
+  "description": "Extract vocals and accompaniment from MP3/WAV files using UVR5 HTDemucs via Modal",
+  "requestFramePermissions": [],
+  "majorCapabilities": []
+}
