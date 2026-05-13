@@ -47,9 +47,9 @@ function formatElapsed(ms: number) {
 
 function estimateProcessingDurationMs(fileSizeBytes: number) {
   const fileSizeMb = fileSizeBytes / (1024 * 1024);
-  const estimatedSeconds = 55 + fileSizeMb * 22;
+  const estimatedSeconds = 25 + fileSizeMb * 6;
 
-  return Math.max(75_000, Math.min(5 * 60_000, estimatedSeconds * 1000));
+  return Math.max(35_000, Math.min(120_000, estimatedSeconds * 1000));
 }
 
 function estimateProcessingProgress(elapsedMs: number, fileSizeBytes: number) {
@@ -159,23 +159,56 @@ export default function App() {
     }
 
     setStatusDetail(`Uploading through Vercel Function fallback (${SERVER_UPLOAD_LIMIT_LABEL} max)...`);
-    setUploadProgress(10);
+    setUploadProgress(0);
 
-    const response = await fetch('/api/upload-source', {
-      method: 'POST',
-      headers: {
-        'Content-Type': selectedFile.type || 'audio/mpeg',
-        'x-file-name': encodeURIComponent(selectedFile.name),
-      },
-      body: selectedFile,
+    const data = await new Promise<{ url: string; pathname: string }>((resolve, reject) => {
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', '/api/upload-source');
+      xhr.setRequestHeader('Content-Type', selectedFile.type || 'audio/mpeg');
+      xhr.setRequestHeader('x-file-name', encodeURIComponent(selectedFile.name));
+      xhr.timeout = 60_000;
+
+      xhr.upload.onprogress = (event) => {
+        if (!event.lengthComputable) {
+          return;
+        }
+
+        const percentage = Math.round((event.loaded / event.total) * 96);
+        setUploadProgress(Math.max(1, Math.min(96, percentage)));
+      };
+
+      xhr.onload = () => {
+        let parsed: { url: string; pathname: string; error?: string } | null = null;
+
+        try {
+          parsed = JSON.parse(xhr.responseText);
+        } catch {
+          reject(new Error('Server fallback upload returned an invalid response.'));
+          return;
+        }
+
+        if (xhr.status < 200 || xhr.status >= 300) {
+          reject(new Error(parsed?.error || 'Server fallback upload failed.'));
+          return;
+        }
+
+        setStatusDetail('Source audio saved to Vercel Blob...');
+        setUploadProgress(100);
+        resolve(parsed);
+      };
+
+      xhr.onerror = () => {
+        reject(new Error('Server fallback upload failed due to a network error.'));
+      };
+
+      xhr.ontimeout = () => {
+        reject(new Error('Server fallback upload timed out before Vercel Blob responded.'));
+      };
+
+      xhr.send(selectedFile);
     });
 
-    const data = await response.json();
-    if (!response.ok) {
-      throw new Error(data.error || 'Server fallback upload failed.');
-    }
-
-    return data as { url: string; pathname: string };
+    return data;
   };
 
   const waitForSeparateJob = async (jobId: string, fileSizeBytes: number) => {
