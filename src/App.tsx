@@ -5,12 +5,25 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '10MB';
+const UPLOAD_TIMEOUT_MS = 120_000;
+
+function createSafeBlobPathname(file: File) {
+  const dotIndex = file.name.lastIndexOf('.');
+  const rawBase = dotIndex === -1 ? file.name : file.name.slice(0, dotIndex);
+  const rawExtension = dotIndex === -1 ? 'mp3' : file.name.slice(dotIndex + 1);
+  const base = rawBase.replace(/[^a-zA-Z0-9._-]/g, '_').replace(/^_+|_+$/g, '').slice(0, 80) || 'audio';
+  const extension = rawExtension.replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'mp3';
+  const id = typeof crypto !== 'undefined' && 'randomUUID' in crypto ? crypto.randomUUID() : Date.now().toString();
+
+  return `sources/${id}-${base}.${extension}`;
+}
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
   const [result, setResult] = useState<Record<string, string> | null>(null);
+  const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectFile = (selected: File) => {
@@ -28,6 +41,7 @@ export default function App() {
     setStatus('idle');
     setErrorMessage('');
     setResult(null);
+    setUploadProgress(null);
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -48,18 +62,32 @@ export default function App() {
 
     setStatus('uploading');
     setErrorMessage('');
+    setUploadProgress(import.meta.env.PROD ? 0 : null);
 
     try {
       let response: Response;
 
       if (import.meta.env.PROD) {
-        const sourceBlob = await upload(`sources/${file.name}`, file, {
+        const uploadController = new AbortController();
+        const uploadTimeout = window.setTimeout(() => {
+          uploadController.abort();
+        }, UPLOAD_TIMEOUT_MS);
+
+        const sourceBlob = await upload(createSafeBlobPathname(file), file, {
           access: 'public',
           handleUploadUrl: '/api/blob-upload',
           contentType: file.type || 'audio/mpeg',
           clientPayload: JSON.stringify({ filename: file.name, size: file.size }),
+          multipart: false,
+          abortSignal: uploadController.signal,
+          onUploadProgress: ({ percentage }) => {
+            setUploadProgress(Math.max(0, Math.min(100, Math.round(percentage))));
+          },
+        }).finally(() => {
+          window.clearTimeout(uploadTimeout);
         });
 
+        setUploadProgress(100);
         setStatus('processing');
         response = await fetch('/api/separate-blob', {
           method: 'POST',
@@ -88,11 +116,17 @@ export default function App() {
       }
 
       setResult(data.stems);
+      setUploadProgress(null);
       setStatus('done');
     } catch (error) {
       console.error(error);
       setStatus('error');
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred.');
+      setUploadProgress(null);
+      if (error instanceof DOMException && error.name === 'AbortError') {
+        setErrorMessage('Upload timed out before reaching Vercel Blob. Please retry, or try a smaller audio file.');
+      } else {
+        setErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred.');
+      }
     }
   };
 
@@ -183,12 +217,20 @@ export default function App() {
                         <span className="text-slate-400 block">Status</span>
                         <span className="text-indigo-400 font-semibold animate-pulse">
                           {status === 'uploading' ? 'Uploading audio securely...' : 'Extracting stems using deep learning...'}
+                          {status === 'uploading' && uploadProgress !== null ? ` ${uploadProgress}%` : ''}
                         </span>
                       </div>
                       <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
                     </div>
                     <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden relative">
-                      <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-indigo-600/30 via-indigo-400/80 to-indigo-600/30 animate-[translateX_2s_linear_infinite]" style={{backgroundSize: '200% 100%'}}></div>
+                      {status === 'uploading' && uploadProgress !== null ? (
+                        <div
+                          className="absolute top-0 left-0 h-full bg-indigo-400 transition-[width] duration-300"
+                          style={{ width: `${uploadProgress}%` }}
+                        ></div>
+                      ) : (
+                        <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-indigo-600/30 via-indigo-400/80 to-indigo-600/30 animate-[translateX_2s_linear_infinite]" style={{backgroundSize: '200% 100%'}}></div>
+                      )}
                       <style>{`@keyframes translateX { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
                     </div>
                   </div>
@@ -238,6 +280,7 @@ export default function App() {
                       setStatus('idle');
                       setFile(null);
                       setResult(null);
+                      setUploadProgress(null);
                     }}
                     className="mt-8 mx-auto px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
                   >

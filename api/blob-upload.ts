@@ -9,12 +9,16 @@ export async function POST(request: Request) {
     const jsonResponse = await handleUpload({
       body,
       request,
-      onBeforeGenerateToken: async (_pathname, clientPayload) => ({
-        allowedContentTypes: ['audio/*'],
-        maximumSizeInBytes: MAX_AUDIO_BYTES,
-        addRandomSuffix: true,
-        tokenPayload: clientPayload,
-      }),
+      onBeforeGenerateToken: async (pathname, clientPayload) => {
+        console.log('Preparing Blob upload:', pathname, clientPayload);
+
+        return {
+          allowedContentTypes: ['audio/*'],
+          maximumSizeInBytes: MAX_AUDIO_BYTES,
+          addRandomSuffix: true,
+          tokenPayload: clientPayload,
+        };
+      },
       onUploadCompleted: async ({ blob }) => {
         console.log('Blob upload completed:', blob.pathname);
       },

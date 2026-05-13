@@ -24,7 +24,11 @@ export async function POST(request: Request) {
   }
 
   try {
+    console.log('Preparing Modal Blob separation:', payload.sourcePathname || payload.sourceUrl);
+
     const source = await head(payload.sourcePathname || payload.sourceUrl);
+    console.log('Blob source ready:', source.pathname, source.size);
+
     if (source.size > MAX_AUDIO_BYTES) {
       await del(payload.sourcePathname || payload.sourceUrl);
       return Response.json({ error: 'Audio file is too large. Maximum size is 10MB.' }, { status: 413 });
@@ -43,6 +47,7 @@ export async function POST(request: Request) {
       headers,
       body: JSON.stringify(payload),
     });
+    console.log('Modal Blob response status:', modalResponse.status);
 
     const data = await modalResponse.json();
 
