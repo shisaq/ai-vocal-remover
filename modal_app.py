@@ -3,6 +3,7 @@ import base64
 import os
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
+RESULT_TTL_SECONDS = int(os.environ.get("RESULT_TTL_SECONDS", "1800"))
 secret = modal.Secret.from_name("ai-vocal-remover-secrets")
 
 # Define the Modal image with Demucs (UVR5 core) dependencies
@@ -87,6 +88,21 @@ def wav_to_mp3(wav_data: bytes, stem: str):
         with open(mp3_path, "rb") as f:
             return f.read()
 
+@app.function(image=image, timeout=RESULT_TTL_SECONDS + 300, secrets=[secret])
+def cleanup_blobs(pathnames: list[str], delay_seconds: int):
+    import time
+    from vercel.blob import BlobClient
+
+    time.sleep(delay_seconds)
+    client = BlobClient()
+
+    for pathname in pathnames:
+        try:
+            client.delete(pathname)
+            print(f"Deleted expired result blob: {pathname}")
+        except Exception as exc:
+            print(f"Failed to delete result blob {pathname}: {exc}")
+
 @app.function(image=image, gpu="T4", timeout=900, secrets=[secret])
 def process_blob(source_ref: str, filename: str | None = None):
     from vercel.blob import BlobClient
@@ -106,22 +122,26 @@ def process_blob(source_ref: str, filename: str | None = None):
         stems = process_audio.remote(audio_bytes, input_filename)
 
         result = {}
+        result_pathnames = []
         base_name = os.path.splitext(sanitize_filename(input_filename))[0]
         for stem, data in stems.items():
             mp3_data = wav_to_mp3(data, stem)
             blob = client.put(
                 f"results/{base_name}-{stem}.mp3",
                 mp3_data,
-                access="private",
+                access="public",
                 content_type="audio/mpeg",
                 add_random_suffix=True,
             )
+            result_pathnames.append(blob.pathname)
             result[stem] = {
                 "url": blob.url,
                 "pathname": blob.pathname,
                 "contentType": "audio/mpeg",
+                "expiresInSeconds": RESULT_TTL_SECONDS,
             }
 
+        cleanup_blobs.spawn(result_pathnames, RESULT_TTL_SECONDS)
         return {"success": True, "stems": result}
     finally:
         client.delete(source_ref)

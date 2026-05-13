@@ -15,6 +15,7 @@ type StemResult = string | {
   url: string;
   pathname?: string;
   contentType?: string;
+  expiresInSeconds?: number;
 };
 
 type StemResults = Record<string, StemResult>;
@@ -47,16 +48,7 @@ function getStemUrl(stemResult: StemResult, download = false) {
     return stemResult;
   }
 
-  if (!stemResult.pathname) {
-    return stemResult.url;
-  }
-
-  const params = new URLSearchParams({ pathname: stemResult.pathname });
-  if (download) {
-    params.set('download', '1');
-  }
-
-  return `/api/blob-audio?${params.toString()}`;
+  return download ? `${stemResult.url}?download=1` : stemResult.url;
 }
 
 function getStemEntries(stems: StemResults) {
@@ -393,7 +385,7 @@ export default function App() {
                   <div className="flex justify-between items-start mb-8">
                     <div>
                       <h3 className="text-lg font-medium">{file?.name}</h3>
-                      <p className="text-xs text-slate-500 mt-1 uppercase tracking-tight">Separation Complete</p>
+                      <p className="text-xs text-slate-500 mt-1 uppercase tracking-tight">Separation Complete · Links expire in 30 minutes</p>
                     </div>
                     <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-[10px] font-bold rounded-md uppercase">Finished</span>
                   </div>
