@@ -5,7 +5,8 @@ import { motion, AnimatePresence } from 'motion/react';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '10MB';
-const UPLOAD_TIMEOUT_MS = 120_000;
+const DIRECT_UPLOAD_TIMEOUT_MS = 30_000;
+const SERVER_UPLOAD_LIMIT_BYTES = 4_500_000;
 
 function createSafeBlobPathname(file: File) {
   const dotIndex = file.name.lastIndexOf('.');
@@ -24,6 +25,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [result, setResult] = useState<Record<string, string> | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [statusDetail, setStatusDetail] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectFile = (selected: File) => {
@@ -42,6 +44,58 @@ export default function App() {
     setErrorMessage('');
     setResult(null);
     setUploadProgress(null);
+    setStatusDetail('');
+  };
+
+  const uploadViaClient = async (selectedFile: File) => {
+    const uploadController = new AbortController();
+    const uploadTimeout = window.setTimeout(() => {
+      uploadController.abort();
+    }, DIRECT_UPLOAD_TIMEOUT_MS);
+
+    try {
+      setStatusDetail('Connecting to Vercel Blob...');
+
+      return await upload(createSafeBlobPathname(selectedFile), selectedFile, {
+        access: 'public',
+        handleUploadUrl: '/api/blob-upload',
+        contentType: selectedFile.type || 'audio/mpeg',
+        clientPayload: JSON.stringify({ filename: selectedFile.name, size: selectedFile.size }),
+        multipart: false,
+        abortSignal: uploadController.signal,
+        onUploadProgress: ({ percentage }) => {
+          setStatusDetail('Uploading directly to Vercel Blob...');
+          setUploadProgress(Math.max(0, Math.min(100, Math.round(percentage))));
+        },
+      });
+    } finally {
+      window.clearTimeout(uploadTimeout);
+    }
+  };
+
+  const uploadViaServerFallback = async (selectedFile: File) => {
+    if (selectedFile.size > SERVER_UPLOAD_LIMIT_BYTES) {
+      throw new Error('Direct Blob upload did not complete, and this file is too large for the server fallback. Please try a smaller file or another browser.');
+    }
+
+    setStatusDetail('Direct upload stalled. Trying server fallback...');
+    setUploadProgress(null);
+
+    const response = await fetch('/api/upload-source', {
+      method: 'POST',
+      headers: {
+        'Content-Type': selectedFile.type || 'audio/mpeg',
+        'x-file-name': encodeURIComponent(selectedFile.name),
+      },
+      body: selectedFile,
+    });
+
+    const data = await response.json();
+    if (!response.ok) {
+      throw new Error(data.error || 'Server fallback upload failed.');
+    }
+
+    return data as { url: string; pathname: string };
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -63,32 +117,23 @@ export default function App() {
     setStatus('uploading');
     setErrorMessage('');
     setUploadProgress(import.meta.env.PROD ? 0 : null);
+    setStatusDetail(import.meta.env.PROD ? 'Preparing upload...' : '');
 
     try {
       let response: Response;
 
       if (import.meta.env.PROD) {
-        const uploadController = new AbortController();
-        const uploadTimeout = window.setTimeout(() => {
-          uploadController.abort();
-        }, UPLOAD_TIMEOUT_MS);
-
-        const sourceBlob = await upload(createSafeBlobPathname(file), file, {
-          access: 'public',
-          handleUploadUrl: '/api/blob-upload',
-          contentType: file.type || 'audio/mpeg',
-          clientPayload: JSON.stringify({ filename: file.name, size: file.size }),
-          multipart: false,
-          abortSignal: uploadController.signal,
-          onUploadProgress: ({ percentage }) => {
-            setUploadProgress(Math.max(0, Math.min(100, Math.round(percentage))));
-          },
-        }).finally(() => {
-          window.clearTimeout(uploadTimeout);
-        });
+        let sourceBlob: { url: string; pathname: string };
+        try {
+          sourceBlob = await uploadViaClient(file);
+        } catch (uploadError) {
+          console.warn('Direct Blob upload failed, trying fallback:', uploadError);
+          sourceBlob = await uploadViaServerFallback(file);
+        }
 
         setUploadProgress(100);
         setStatus('processing');
+        setStatusDetail('Sending upload to Modal...');
         response = await fetch('/api/separate-blob', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -117,11 +162,13 @@ export default function App() {
 
       setResult(data.stems);
       setUploadProgress(null);
+      setStatusDetail('');
       setStatus('done');
     } catch (error) {
       console.error(error);
       setStatus('error');
       setUploadProgress(null);
+      setStatusDetail('');
       if (error instanceof DOMException && error.name === 'AbortError') {
         setErrorMessage('Upload timed out before reaching Vercel Blob. Please retry, or try a smaller audio file.');
       } else {
@@ -219,6 +266,7 @@ export default function App() {
                           {status === 'uploading' ? 'Uploading audio securely...' : 'Extracting stems using deep learning...'}
                           {status === 'uploading' && uploadProgress !== null ? ` ${uploadProgress}%` : ''}
                         </span>
+                        {statusDetail && <span className="text-slate-500 block">{statusDetail}</span>}
                       </div>
                       <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
                     </div>
@@ -281,6 +329,7 @@ export default function App() {
                       setFile(null);
                       setResult(null);
                       setUploadProgress(null);
+                      setStatusDetail('');
                     }}
                     className="mt-8 mx-auto px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
                   >

@@ -8,6 +8,9 @@
     },
     "api/separate-blob.ts": {
       "maxDuration": 60
+    },
+    "api/upload-source.ts": {
+      "maxDuration": 60
     }
   }
 }
