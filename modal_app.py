@@ -128,7 +128,7 @@ def fastapi_app():
         source_ref = source_pathname or source_url
 
         try:
-            source = await client.get(source_ref, access="public")
+            source = await client.get(source_ref, access="private")
             if source.size and source.size > MAX_AUDIO_BYTES:
                 raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
 
@@ -145,7 +145,7 @@ def fastapi_app():
                 blob = await client.put(
                     f"results/{base_name}-{stem}.wav",
                     data,
-                    access="public",
+                    access="private",
                     content_type="audio/wav",
                     add_random_suffix=True,
                 )

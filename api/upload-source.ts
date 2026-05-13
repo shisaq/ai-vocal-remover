@@ -29,7 +29,7 @@ export async function POST(request: Request) {
     console.log('Using server Blob upload fallback:', filename, body.byteLength);
 
     const blob = await put(createSafeBlobPathname(filename), Buffer.from(body), {
-      access: 'public',
+      access: 'private',
       addRandomSuffix: true,
       contentType,
     });
