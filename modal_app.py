@@ -90,7 +90,7 @@ def process_blob(source_ref: str, filename: str | None = None):
             blob = client.put(
                 f"results/{base_name}-{stem}.wav",
                 data,
-                access="private",
+                access="public",
                 content_type="audio/wav",
                 add_random_suffix=True,
             )
