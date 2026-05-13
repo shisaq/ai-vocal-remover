@@ -1,6 +1,9 @@
 import React, { useState, useRef } from 'react';
-import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, CheckCircle2 } from 'lucide-react';
+import { Upload, FileAudio, Play, Loader2, Download, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+
+const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
+const MAX_FILE_SIZE_LABEL = '10MB';
 
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
@@ -9,32 +12,33 @@ export default function App() {
   const [result, setResult] = useState<Record<string, string> | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
+  const selectFile = (selected: File) => {
+    if (!selected.type.includes('audio') && !selected.name.endsWith('.mp3') && !selected.name.endsWith('.wav')) {
+      setErrorMessage('Please upload a valid MP3 or WAV file.');
+      return;
+    }
+
+    if (selected.size > MAX_FILE_SIZE_BYTES) {
+      setErrorMessage(`Please upload an audio file smaller than ${MAX_FILE_SIZE_LABEL}.`);
+      return;
+    }
+
+    setFile(selected);
+    setStatus('idle');
+    setErrorMessage('');
+    setResult(null);
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
-      const selected = e.target.files[0];
-      if (selected.type.includes('audio') || selected.name.endsWith('.mp3') || selected.name.endsWith('.wav')) {
-        setFile(selected);
-        setStatus('idle');
-        setErrorMessage('');
-        setResult(null);
-      } else {
-        setErrorMessage('Please upload a valid MP3 or WAV file.');
-      }
+      selectFile(e.target.files[0]);
     }
   };
 
   const handleDrop = (e: React.DragEvent) => {
     e.preventDefault();
     if (e.dataTransfer.files && e.dataTransfer.files[0]) {
-      const selected = e.dataTransfer.files[0];
-      if (selected.type.includes('audio') || selected.name.endsWith('.mp3') || selected.name.endsWith('.wav')) {
-        setFile(selected);
-        setStatus('idle');
-        setErrorMessage('');
-        setResult(null);
-      } else {
-        setErrorMessage('Please upload a valid MP3 or WAV file.');
-      }
+      selectFile(e.dataTransfer.files[0]);
     }
   };
 
@@ -116,7 +120,7 @@ export default function App() {
                     <p className="text-lg text-slate-300">
                       {file ? file.name : <><span className="text-indigo-400 font-semibold">Drop your audio file</span> here</>}
                     </p>
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Supporting MP3, WAV (Max 50MB)</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Supporting MP3, WAV (Max {MAX_FILE_SIZE_LABEL})</p>
                   </div>
                   <input
                     type="file"

@@ -1,14 +1,16 @@
 # AI Vocal Remover
 
-A local React app for separating vocals from accompaniment in MP3/WAV files. The UI uploads audio to a local Express server, which forwards the file to a Modal GPU backend running Demucs with the `htdemucs` model.
+A React app for separating vocals from accompaniment in MP3/WAV files. Local development runs Demucs on your own machine; production is intended to run the heavy audio job on Modal, with Vercel hosting the UI.
 
-## Features
+## Current Features
 
 - Drag-and-drop MP3/WAV upload
-- 50 MB local upload limit
+- 10 MB upload limit
+- Local Demucs processing for development
+- Optional Modal processing mode
 - Vocal and accompaniment preview in the browser
 - One-click download for separated stems
-- Optional bearer-token protection for the Modal endpoint
+- Temporary source-file cleanup after each local task
 
 ## Tech Stack
 
@@ -16,22 +18,26 @@ A local React app for separating vocals from accompaniment in MP3/WAV files. The
 - Vite 6
 - Tailwind CSS 4
 - Express + Multer
-- Modal + FastAPI
 - Demucs / HTDemucs
+- Modal + FastAPI for hosted GPU processing
+- Vercel Blob planned for production file handoff
 
-## Prerequisites
+## Local Development
 
-- Node.js 18 or newer
-- npm
-- A Modal account and Modal CLI for the GPU backend
-- Python environment with `modal` installed for deploying `modal_app.py`
+Local development does not use Vercel. The browser sends audio to the local Express server, and the server runs the `demucs` CLI on your computer.
 
-## Setup
-
-Install frontend and local server dependencies:
+Install Node dependencies:
 
 ```bash
 npm install
+```
+
+Install local audio tools:
+
+```bash
+brew install ffmpeg
+python3.11 -m venv .venv
+.venv/bin/pip install demucs torchcodec
 ```
 
 Create a local environment file:
@@ -40,23 +46,17 @@ Create a local environment file:
 cp .env.example .env.local
 ```
 
-Deploy the Modal backend:
+Set the local processor:
 
 ```bash
-modal deploy modal_app.py
+AUDIO_PROCESSOR="local"
+DEMUCS_COMMAND="./.venv/bin/demucs"
+DEMUCS_DEVICE="cpu"
 ```
 
-Set `MODAL_WEBHOOK_URL` in `.env.local` to the deployed FastAPI endpoint, including the `/separate` route:
+PyTorch works on macOS, including Apple Silicon. For this project, `cpu` is the most reliable local test device; it is slower than Modal's GPU, but it avoids MPS compatibility surprises. If you want to experiment after CPU works, try `DEMUCS_DEVICE="mps"` on Apple Silicon.
 
-```bash
-MODAL_WEBHOOK_URL="https://YOUR_WORKSPACE_NAME--uvr5-demucs-app-fastapi-app.modal.run/separate"
-```
-
-`MODAL_AUTH_TOKEN` is optional. If you set it in the Modal app environment, set the same value locally so the Express proxy sends `Authorization: Bearer ...`.
-
-## Run Locally
-
-Start the local Express + Vite development server:
+Start the app:
 
 ```bash
 npm run dev
@@ -68,6 +68,45 @@ Open:
 http://localhost:3000
 ```
 
+## Modal Mode
+
+Use Modal mode when you want to test the deployed GPU backend from your local app.
+
+Deploy the Modal backend:
+
+```bash
+modal deploy modal_app.py
+```
+
+Set these values in `.env.local`:
+
+```bash
+AUDIO_PROCESSOR="modal"
+MODAL_WEBHOOK_URL="https://YOUR_WORKSPACE_NAME--uvr5-demucs-app-fastapi-app.modal.run/separate"
+MODAL_AUTH_TOKEN="YOUR_SECRET_TOKEN"
+```
+
+`MODAL_AUTH_TOKEN` is optional. If you set it in the Modal app environment, set the same value locally so the Express proxy sends `Authorization: Bearer ...`.
+
+## Vercel Deployment Plan
+
+The current local `/api/separate` endpoint is useful for development, but production should avoid sending audio through a Vercel Function. Vercel Functions have payload limits, so production should use Vercel Blob as the file handoff layer:
+
+1. The browser uploads a file up to 10 MB directly to Vercel Blob.
+2. The app sends the Blob URL or pathname to Modal.
+3. Modal downloads the source file, runs Demucs, uploads result stems, and deletes the source file promptly.
+4. The browser receives the result URLs for playback and download.
+
+Required Vercel environment variables for that production path:
+
+```bash
+BLOB_READ_WRITE_TOKEN="vercel_blob_rw_..."
+MODAL_WEBHOOK_URL="https://YOUR_WORKSPACE_NAME--uvr5-demucs-app-fastapi-app.modal.run/separate"
+MODAL_AUTH_TOKEN="YOUR_SECRET_TOKEN"
+```
+
+The Vercel Blob production handoff is the next implementation step. Local testing already works without Vercel once `demucs` is installed.
+
 ## Available Scripts
 
 ```bash
@@ -78,17 +117,19 @@ npm run lint     # Run TypeScript checks
 npm run clean    # Remove dist/
 ```
 
-## How It Works
+## How Local Processing Works
 
 1. The React app sends the selected audio file to `POST /api/separate`.
-2. `server.ts` validates the upload and forwards it to `MODAL_WEBHOOK_URL`.
-3. `modal_app.py` runs Demucs with `--two-stems vocals -n htdemucs`.
-4. The Modal backend returns base64 WAV data URLs for `vocals` and `other`.
-5. The UI renders audio previews and download links for each stem.
+2. `server.ts` validates the 10 MB limit and writes the upload to a temporary directory.
+3. The server runs `demucs --two-stems vocals -n htdemucs`.
+4. The server reads `vocals.wav` and `no_vocals.wav` as data URLs.
+5. The temporary source and output files are deleted.
+6. The UI renders audio previews and download links for each stem.
 
 ## Notes
 
 - The local server listens on port `3000`.
-- Uploads are kept in memory before being forwarded to Modal.
-- Processing can take a while depending on file length and Modal cold starts.
-- The Modal function currently uses a T4 GPU and has a 600-second timeout.
+- Local processing speed depends on your machine.
+- CPU mode is recommended first on macOS for reliability.
+- The first Demucs run may download model weights.
+- `ffmpeg` is required by Demucs.
