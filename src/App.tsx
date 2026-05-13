@@ -10,6 +10,8 @@ const SERVER_UPLOAD_LIMIT_BYTES = 4_500_000;
 const SERVER_UPLOAD_LIMIT_LABEL = '4.5MB';
 const JOB_POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS = 15 * 60_000;
+const PROCESSING_START_PROGRESS = 30;
+const PROCESSING_MAX_PROGRESS = 95;
 
 type StemResult = string | {
   url: string;
@@ -43,6 +45,44 @@ function formatElapsed(ms: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
+function estimateProcessingDurationMs(fileSizeBytes: number) {
+  const fileSizeMb = fileSizeBytes / (1024 * 1024);
+  const estimatedSeconds = 55 + fileSizeMb * 22;
+
+  return Math.max(75_000, Math.min(5 * 60_000, estimatedSeconds * 1000));
+}
+
+function estimateProcessingProgress(elapsedMs: number, fileSizeBytes: number) {
+  const estimatedDurationMs = estimateProcessingDurationMs(fileSizeBytes);
+  const progressRange = PROCESSING_MAX_PROGRESS - PROCESSING_START_PROGRESS;
+  const ratio = Math.min(1, elapsedMs / estimatedDurationMs);
+  const easedRatio = 1 - Math.pow(1 - ratio, 2);
+
+  return Math.min(
+    PROCESSING_MAX_PROGRESS,
+    Math.round(PROCESSING_START_PROGRESS + progressRange * easedRatio),
+  );
+}
+
+function getProcessingStatusDetail(elapsedMs: number, fileSizeBytes: number) {
+  const progress = estimateProcessingProgress(elapsedMs, fileSizeBytes);
+  const elapsed = formatElapsed(elapsedMs);
+
+  if (progress < 45) {
+    return `Queued on Modal (${elapsed} elapsed)...`;
+  }
+
+  if (progress < 82) {
+    return `Separating vocals and accompaniment (${elapsed} elapsed)...`;
+  }
+
+  if (progress < PROCESSING_MAX_PROGRESS) {
+    return `Encoding and uploading results (${elapsed} elapsed)...`;
+  }
+
+  return `Almost done (${elapsed} elapsed)...`;
+}
+
 function getStemUrl(stemResult: StemResult, download = false) {
   if (typeof stemResult === 'string') {
     return stemResult;
@@ -61,6 +101,7 @@ export default function App() {
   const [errorMessage, setErrorMessage] = useState('');
   const [result, setResult] = useState<StemResults | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
+  const [processingProgress, setProcessingProgress] = useState<number | null>(null);
   const [statusDetail, setStatusDetail] = useState('');
   const [processingElapsed, setProcessingElapsed] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
@@ -81,6 +122,7 @@ export default function App() {
     setErrorMessage('');
     setResult(null);
     setUploadProgress(null);
+    setProcessingProgress(null);
     setStatusDetail('');
     setProcessingElapsed(0);
   };
@@ -136,14 +178,15 @@ export default function App() {
     return data as { url: string; pathname: string };
   };
 
-  const waitForSeparateJob = async (jobId: string) => {
+  const waitForSeparateJob = async (jobId: string, fileSizeBytes: number) => {
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < JOB_TIMEOUT_MS) {
       await sleep(JOB_POLL_INTERVAL_MS);
       const elapsed = Date.now() - startedAt;
       setProcessingElapsed(elapsed);
-      setStatusDetail(`Modal is processing your audio (${formatElapsed(elapsed)} elapsed)...`);
+      setProcessingProgress(estimateProcessingProgress(elapsed, fileSizeBytes));
+      setStatusDetail(getProcessingStatusDetail(elapsed, fileSizeBytes));
 
       const response = await fetch('/api/separate-status', {
         method: 'POST',
@@ -220,9 +263,11 @@ export default function App() {
           throw new Error(startData.error || 'Failed to start Modal processing.');
         }
 
-        const jobResult = await waitForSeparateJob(startData.jobId);
+        setProcessingProgress(PROCESSING_START_PROGRESS);
+        const jobResult = await waitForSeparateJob(startData.jobId, file.size);
         setResult(jobResult.stems);
         setUploadProgress(null);
+        setProcessingProgress(null);
         setStatusDetail('');
         setProcessingElapsed(0);
         setStatus('done');
@@ -246,6 +291,7 @@ export default function App() {
 
       setResult(data.stems);
       setUploadProgress(null);
+      setProcessingProgress(null);
       setStatusDetail('');
       setProcessingElapsed(0);
       setStatus('done');
@@ -253,6 +299,7 @@ export default function App() {
       console.error(error);
       setStatus('error');
       setUploadProgress(null);
+      setProcessingProgress(null);
       setStatusDetail('');
       setProcessingElapsed(0);
       if (error instanceof DOMException && error.name === 'AbortError') {
@@ -351,6 +398,7 @@ export default function App() {
                         <span className="text-indigo-400 font-semibold animate-pulse">
                           {status === 'uploading' ? 'Uploading audio securely...' : 'Extracting stems using deep learning...'}
                           {status === 'uploading' && uploadProgress !== null ? ` ${uploadProgress}%` : ''}
+                          {status === 'processing' && processingProgress !== null ? ` ${processingProgress}%` : ''}
                         </span>
                         {(statusDetail || (status === 'processing' && processingElapsed > 0)) && (
                           <span className="text-slate-500 block">
@@ -361,10 +409,10 @@ export default function App() {
                       <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
                     </div>
                     <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden relative">
-                      {status === 'uploading' && uploadProgress !== null ? (
+                      {(status === 'uploading' && uploadProgress !== null) || (status === 'processing' && processingProgress !== null) ? (
                         <div
                           className="absolute top-0 left-0 h-full bg-indigo-400 transition-[width] duration-300"
-                          style={{ width: `${uploadProgress}%` }}
+                          style={{ width: `${status === 'uploading' ? uploadProgress : processingProgress}%` }}
                         ></div>
                       ) : (
                         <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-indigo-600/30 via-indigo-400/80 to-indigo-600/30 animate-[translateX_2s_linear_infinite]" style={{backgroundSize: '200% 100%'}}></div>
