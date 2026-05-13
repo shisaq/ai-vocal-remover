@@ -1,6 +1,7 @@
 import modal
 import base64
 import os
+import re
 
 MAX_AUDIO_BYTES = 10 * 1024 * 1024
 RESULT_TTL_SECONDS = int(os.environ.get("RESULT_TTL_SECONDS", "1800"))
@@ -18,6 +19,12 @@ app = modal.App("uvr5-demucs-app")
 def sanitize_filename(filename: str):
     safe = "".join(char if char.isalnum() or char in "._-" else "_" for char in filename)
     return safe or "input.wav"
+
+def sanitize_blob_basename(filename: str):
+    stem = os.path.splitext(os.path.basename(filename))[0]
+    safe = re.sub(r"[^a-zA-Z0-9._-]+", "-", stem).strip("-._").lower()
+    safe = re.sub(r"-{2,}", "-", safe)
+    return safe[:80] or "track"
 
 @app.function(image=image, gpu="T4", timeout=900, secrets=[secret])
 def process_audio(audio_data: bytes, filename: str):
@@ -103,6 +110,46 @@ def cleanup_blobs(pathnames: list[str], delay_seconds: int):
         except Exception as exc:
             print(f"Failed to delete result blob {pathname}: {exc}")
 
+@app.function(
+    image=image,
+    timeout=120,
+    secrets=[secret],
+    schedule=modal.Period(minutes=30),
+)
+def sweep_expired_result_blobs():
+    from datetime import datetime, timezone
+    from vercel.blob import BlobClient
+
+    client = BlobClient()
+    now = datetime.now(timezone.utc)
+    cursor = None
+    deleted_count = 0
+
+    while True:
+        page = client.list_objects(prefix="results/", cursor=cursor, limit=1000)
+        expired_pathnames = []
+
+        for blob in page.blobs:
+            uploaded_at = blob.uploaded_at
+            if uploaded_at.tzinfo is None:
+                uploaded_at = uploaded_at.replace(tzinfo=timezone.utc)
+
+            age_seconds = (now - uploaded_at).total_seconds()
+            if age_seconds >= RESULT_TTL_SECONDS:
+                expired_pathnames.append(blob.pathname)
+
+        if expired_pathnames:
+            client.delete(expired_pathnames)
+            deleted_count += len(expired_pathnames)
+            print(f"Deleted {len(expired_pathnames)} expired result blobs")
+
+        if not page.has_more:
+            break
+
+        cursor = page.cursor
+
+    print(f"Sweep complete, deleted {deleted_count} expired result blobs")
+
 @app.function(image=image, gpu="T4", timeout=900, secrets=[secret])
 def process_blob(source_ref: str, filename: str | None = None):
     from vercel.blob import BlobClient
@@ -123,7 +170,7 @@ def process_blob(source_ref: str, filename: str | None = None):
 
         result = {}
         result_pathnames = []
-        base_name = os.path.splitext(sanitize_filename(input_filename))[0]
+        base_name = sanitize_blob_basename(input_filename)
         for stem, data in stems.items():
             mp3_data = wav_to_mp3(data, stem)
             blob = client.put(
@@ -142,6 +189,7 @@ def process_blob(source_ref: str, filename: str | None = None):
             }
 
         cleanup_blobs.spawn(result_pathnames, RESULT_TTL_SECONDS)
+        sweep_expired_result_blobs.spawn()
         return {"success": True, "stems": result}
     finally:
         client.delete(source_ref)
