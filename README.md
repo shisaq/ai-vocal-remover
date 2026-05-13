@@ -8,6 +8,7 @@ A React app for separating vocals from accompaniment in MP3/WAV files. Local dev
 - 10 MB upload limit
 - Local Demucs processing for development
 - Optional Modal processing mode
+- Vercel Blob production handoff for deployed builds
 - Vocal and accompaniment preview in the browser
 - One-click download for separated stems
 - Temporary source-file cleanup after each local task
@@ -70,7 +71,23 @@ http://localhost:3000
 
 ## Modal Mode
 
-Use Modal mode when you want to test the deployed GPU backend from your local app.
+Use Modal mode when you want to test the deployed GPU backend from your local app or from Vercel.
+
+Create a Modal Secret named `ai-vocal-remover-secrets` with these values:
+
+```bash
+MODAL_AUTH_TOKEN="YOUR_SECRET_TOKEN"
+BLOB_READ_WRITE_TOKEN="vercel_blob_rw_..."
+```
+
+You can create it in the Modal dashboard:
+
+1. Open Modal Dashboard.
+2. Go to Secrets.
+3. Create a new custom secret.
+4. Name it `ai-vocal-remover-secrets`.
+5. Add `MODAL_AUTH_TOKEN`.
+6. Add `BLOB_READ_WRITE_TOKEN` after you create your Vercel Blob store.
 
 Deploy the Modal backend:
 
@@ -86,16 +103,29 @@ MODAL_WEBHOOK_URL="https://YOUR_WORKSPACE_NAME--uvr5-demucs-app-fastapi-app.moda
 MODAL_AUTH_TOKEN="YOUR_SECRET_TOKEN"
 ```
 
-`MODAL_AUTH_TOKEN` is optional. If you set it in the Modal app environment, set the same value locally so the Express proxy sends `Authorization: Bearer ...`.
+`MODAL_AUTH_TOKEN` is optional, but recommended. If you set it in the Modal Secret, set the same value locally and in Vercel so requests send `Authorization: Bearer ...`.
 
 ## Vercel Deployment Plan
 
-The current local `/api/separate` endpoint is useful for development, but production should avoid sending audio through a Vercel Function. Vercel Functions have payload limits, so production should use Vercel Blob as the file handoff layer:
+Production builds use Vercel Blob. The browser uploads audio directly to Blob, so the audio file does not pass through a Vercel Function request body.
 
 1. The browser uploads a file up to 10 MB directly to Vercel Blob.
-2. The app sends the Blob URL or pathname to Modal.
-3. Modal downloads the source file, runs Demucs, uploads result stems, and deletes the source file promptly.
-4. The browser receives the result URLs for playback and download.
+2. The app sends the Blob URL/pathname to `/api/separate-blob`.
+3. The Vercel Function forwards JSON to Modal.
+4. Modal downloads the source file, runs Demucs, uploads result stems to Vercel Blob, and deletes the source file promptly.
+5. The browser receives the result URLs for playback and download.
+
+Create Vercel Blob:
+
+1. Import this GitHub repo into Vercel.
+2. Open the project in Vercel.
+3. Go to Storage.
+4. Create Database.
+5. Choose Blob.
+6. Use public access for the current implementation.
+7. Attach it to Production and Preview environments.
+
+Vercel will add `BLOB_READ_WRITE_TOKEN` to the project automatically.
 
 Required Vercel environment variables for that production path:
 
@@ -105,7 +135,16 @@ MODAL_WEBHOOK_URL="https://YOUR_WORKSPACE_NAME--uvr5-demucs-app-fastapi-app.moda
 MODAL_AUTH_TOKEN="YOUR_SECRET_TOKEN"
 ```
 
-The Vercel Blob production handoff is the next implementation step. Local testing already works without Vercel once `demucs` is installed.
+Vercel project settings:
+
+```text
+Framework Preset: Vite
+Build Command: npm run build
+Output Directory: dist
+Install Command: npm install
+```
+
+The checked-in `vercel.json` sets the same build settings and gives the two API functions a 60-second max duration for the Hobby plan.
 
 ## Available Scripts
 
@@ -133,3 +172,4 @@ npm run clean    # Remove dist/
 - CPU mode is recommended first on macOS for reliability.
 - The first Demucs run may download model weights.
 - `ffmpeg` is required by Demucs.
+- Production source files are uploaded to public Blob storage briefly, then deleted by Modal after processing. Result stems remain in Blob for playback and download.

@@ -1,0 +1,13 @@
+{
+  "framework": "vite",
+  "buildCommand": "npm run build",
+  "outputDirectory": "dist",
+  "functions": {
+    "api/blob-upload.ts": {
+      "maxDuration": 60
+    },
+    "api/separate-blob.ts": {
+      "maxDuration": 60
+    }
+  }
+}

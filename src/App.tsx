@@ -1,4 +1,5 @@
 import React, { useState, useRef } from 'react';
+import { upload } from '@vercel/blob/client';
 import { Upload, FileAudio, Play, Loader2, Download, AlertCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 
@@ -47,17 +48,38 @@ export default function App() {
 
     setStatus('uploading');
     setErrorMessage('');
-    
-    // Create form data
-    const formData = new FormData();
-    formData.append('audio', file);
 
     try {
-      setStatus('processing');
-      const response = await fetch('/api/separate', {
-        method: 'POST',
-        body: formData,
-      });
+      let response: Response;
+
+      if (import.meta.env.PROD) {
+        const sourceBlob = await upload(`sources/${file.name}`, file, {
+          access: 'public',
+          handleUploadUrl: '/api/blob-upload',
+          contentType: file.type || 'audio/mpeg',
+          clientPayload: JSON.stringify({ filename: file.name, size: file.size }),
+        });
+
+        setStatus('processing');
+        response = await fetch('/api/separate-blob', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({
+            sourceUrl: sourceBlob.url,
+            sourcePathname: sourceBlob.pathname,
+            filename: file.name,
+          }),
+        });
+      } else {
+        const formData = new FormData();
+        formData.append('audio', file);
+
+        setStatus('processing');
+        response = await fetch('/api/separate', {
+          method: 'POST',
+          body: formData,
+        });
+      }
 
       const data = await response.json();
 
@@ -144,7 +166,7 @@ export default function App() {
                 </motion.div>
               )}
 
-              {status === 'processing' && (
+              {(status === 'uploading' || status === 'processing') && (
                 <motion.div
                   key="processing"
                   initial={{ opacity: 0, scale: 0.95 }}
@@ -159,7 +181,9 @@ export default function App() {
                     <div className="flex justify-between items-end text-xs">
                       <div className="space-y-1">
                         <span className="text-slate-400 block">Status</span>
-                        <span className="text-indigo-400 font-semibold animate-pulse">Extracting stems using deep learning...</span>
+                        <span className="text-indigo-400 font-semibold animate-pulse">
+                          {status === 'uploading' ? 'Uploading audio securely...' : 'Extracting stems using deep learning...'}
+                        </span>
                       </div>
                       <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
                     </div>

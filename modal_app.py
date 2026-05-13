@@ -1,25 +1,44 @@
 import modal
 from fastapi import FastAPI, UploadFile, File, HTTPException, Header
 from fastapi.responses import JSONResponse
+from pydantic import BaseModel
 import base64
+import os
+
+MAX_AUDIO_BYTES = 10 * 1024 * 1024
+secret = modal.Secret.from_name("ai-vocal-remover-secrets")
 
 # Define the Modal image with Demucs (UVR5 core) dependencies
 image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("ffmpeg") # ffmpeg is required for audio processing
-    .pip_install("demucs", "fastapi[standard]", "python-multipart")
+    .pip_install("demucs", "torchcodec", "fastapi[standard]", "python-multipart", "vercel")
 )
 
 app = modal.App("uvr5-demucs-app")
 
-@app.function(image=image, gpu="T4", timeout=600)
+class BlobSeparateRequest(BaseModel):
+    sourceUrl: str
+    sourcePathname: str | None = None
+    filename: str | None = None
+
+def check_auth(authorization: str | None):
+    expected_token = os.environ.get("MODAL_AUTH_TOKEN")
+    if expected_token and authorization != f"Bearer {expected_token}":
+        raise HTTPException(status_code=401, detail="Unauthorized")
+
+def sanitize_filename(filename: str):
+    safe = "".join(char if char.isalnum() or char in "._-" else "_" for char in filename)
+    return safe or "input.wav"
+
+@app.function(image=image, gpu="T4", timeout=900, secrets=[secret])
 def process_audio(audio_data: bytes, filename: str):
     import tempfile
     import os
     import subprocess
     
     with tempfile.TemporaryDirectory() as tempdir:
-        input_path = os.path.join(tempdir, filename)
+        input_path = os.path.join(tempdir, sanitize_filename(filename))
         with open(input_path, "wb") as f:
             f.write(audio_data)
             
@@ -51,13 +70,13 @@ def process_audio(audio_data: bytes, filename: str):
             raise Exception("Output files not found after processing")
             
         with open(vocals_path, "rb") as f:
-            vocals_b64 = base64.b64encode(f.read()).decode("utf-8")
+            vocals = f.read()
         with open(accomp_path, "rb") as f:
-            accomp_b64 = base64.b64encode(f.read()).decode("utf-8")
+            accomp = f.read()
             
         return {
-            "vocals": f"data:audio/wav;base64,{vocals_b64}",
-            "other": f"data:audio/wav;base64,{accomp_b64}"
+            "vocals": vocals,
+            "other": accomp
         }
 
 web_app = FastAPI()
@@ -67,25 +86,77 @@ async def separate_audio(
     audio: UploadFile = File(...),
     authorization: str = Header(None)
 ):
-    import os
-    expected_token = os.environ.get("MODAL_AUTH_TOKEN")
-    if expected_token and authorization != f"Bearer {expected_token}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
+    check_auth(authorization)
         
     try:
         audio_bytes = await audio.read()
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
+
         filename = audio.filename or "input.wav"
         
         # Call the heavy GPU function synchronously
-        result = process_audio.remote(audio_bytes, filename)
+        stems = process_audio.remote(audio_bytes, filename)
+        result = {
+            stem: f"data:audio/wav;base64,{base64.b64encode(data).decode('utf-8')}"
+            for stem, data in stems.items()
+        }
         
         return JSONResponse(content={"success": True, "stems": result})
+    except HTTPException:
+        raise
     except Exception as e:
         import traceback
         traceback.print_exc()
         raise HTTPException(status_code=500, detail=str(e))
 
-@app.function(image=image)
+@web_app.post("/separate-blob")
+async def separate_blob(
+    payload: BlobSeparateRequest,
+    authorization: str = Header(None)
+):
+    check_auth(authorization)
+
+    from vercel.blob import AsyncBlobClient
+
+    client = AsyncBlobClient()
+    source_ref = payload.sourcePathname or payload.sourceUrl
+
+    try:
+        source = await client.get(source_ref, access="public")
+        if source.size and source.size > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
+
+        audio_bytes = source.content
+        if len(audio_bytes) > MAX_AUDIO_BYTES:
+            raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
+
+        filename = payload.filename or os.path.basename(source.pathname) or "input.wav"
+        stems = process_audio.remote(audio_bytes, filename)
+
+        result = {}
+        base_name = os.path.splitext(sanitize_filename(filename))[0]
+        for stem, data in stems.items():
+            blob = await client.put(
+                f"results/{base_name}-{stem}.wav",
+                data,
+                access="public",
+                content_type="audio/wav",
+                add_random_suffix=True,
+            )
+            result[stem] = blob.url
+
+        return JSONResponse(content={"success": True, "stems": result})
+    except HTTPException:
+        raise
+    except Exception as e:
+        import traceback
+        traceback.print_exc()
+        raise HTTPException(status_code=500, detail=str(e))
+    finally:
+        await client.delete(source_ref)
+
+@app.function(image=image, secrets=[secret])
 @modal.asgi_app()
 def fastapi_app():
     return web_app
