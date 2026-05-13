@@ -7,6 +7,7 @@ const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '10MB';
 const DIRECT_UPLOAD_TIMEOUT_MS = 30_000;
 const SERVER_UPLOAD_LIMIT_BYTES = 4_500_000;
+const SERVER_UPLOAD_LIMIT_LABEL = '4.5MB';
 
 function createSafeBlobPathname(file: File) {
   const dotIndex = file.name.lastIndexOf('.');
@@ -75,11 +76,11 @@ export default function App() {
 
   const uploadViaServerFallback = async (selectedFile: File) => {
     if (selectedFile.size > SERVER_UPLOAD_LIMIT_BYTES) {
-      throw new Error('Direct Blob upload did not complete, and this file is too large for the server fallback. Please try a smaller file or another browser.');
+      throw new Error(`Direct Blob upload did not complete, and this file is too large for the server fallback. Please try a file under ${SERVER_UPLOAD_LIMIT_LABEL} or another browser.`);
     }
 
-    setStatusDetail('Direct upload stalled. Trying server fallback...');
-    setUploadProgress(null);
+    setStatusDetail(`Uploading through Vercel Function fallback (${SERVER_UPLOAD_LIMIT_LABEL} max)...`);
+    setUploadProgress(10);
 
     const response = await fetch('/api/upload-source', {
       method: 'POST',
@@ -124,11 +125,15 @@ export default function App() {
 
       if (import.meta.env.PROD) {
         let sourceBlob: { url: string; pathname: string };
-        try {
-          sourceBlob = await uploadViaClient(file);
-        } catch (uploadError) {
-          console.warn('Direct Blob upload failed, trying fallback:', uploadError);
+        if (file.size <= SERVER_UPLOAD_LIMIT_BYTES) {
           sourceBlob = await uploadViaServerFallback(file);
+        } else {
+          try {
+            sourceBlob = await uploadViaClient(file);
+          } catch (uploadError) {
+            console.warn('Direct Blob upload failed, trying fallback:', uploadError);
+            sourceBlob = await uploadViaServerFallback(file);
+          }
         }
 
         setUploadProgress(100);
