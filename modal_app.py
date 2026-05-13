@@ -1,7 +1,4 @@
 import modal
-from fastapi import FastAPI, UploadFile, File, HTTPException, Header
-from fastapi.responses import JSONResponse
-from pydantic import BaseModel
 import base64
 import os
 
@@ -16,16 +13,6 @@ image = (
 )
 
 app = modal.App("uvr5-demucs-app")
-
-class BlobSeparateRequest(BaseModel):
-    sourceUrl: str
-    sourcePathname: str | None = None
-    filename: str | None = None
-
-def check_auth(authorization: str | None):
-    expected_token = os.environ.get("MODAL_AUTH_TOKEN")
-    if expected_token and authorization != f"Bearer {expected_token}":
-        raise HTTPException(status_code=401, detail="Unauthorized")
 
 def sanitize_filename(filename: str):
     safe = "".join(char if char.isalnum() or char in "._-" else "_" for char in filename)
@@ -79,84 +66,99 @@ def process_audio(audio_data: bytes, filename: str):
             "other": accomp
         }
 
-web_app = FastAPI()
-
-@web_app.post("/separate")
-async def separate_audio(
-    audio: UploadFile = File(...),
-    authorization: str = Header(None)
-):
-    check_auth(authorization)
-        
-    try:
-        audio_bytes = await audio.read()
-        if len(audio_bytes) > MAX_AUDIO_BYTES:
-            raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
-
-        filename = audio.filename or "input.wav"
-        
-        # Call the heavy GPU function synchronously
-        stems = process_audio.remote(audio_bytes, filename)
-        result = {
-            stem: f"data:audio/wav;base64,{base64.b64encode(data).decode('utf-8')}"
-            for stem, data in stems.items()
-        }
-        
-        return JSONResponse(content={"success": True, "stems": result})
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-
-@web_app.post("/separate-blob")
-async def separate_blob(
-    payload: BlobSeparateRequest,
-    authorization: str = Header(None)
-):
-    check_auth(authorization)
-
-    from vercel.blob import AsyncBlobClient
-
-    client = AsyncBlobClient()
-    source_ref = payload.sourcePathname or payload.sourceUrl
-
-    try:
-        source = await client.get(source_ref, access="public")
-        if source.size and source.size > MAX_AUDIO_BYTES:
-            raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
-
-        audio_bytes = source.content
-        if len(audio_bytes) > MAX_AUDIO_BYTES:
-            raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
-
-        filename = payload.filename or os.path.basename(source.pathname) or "input.wav"
-        stems = process_audio.remote(audio_bytes, filename)
-
-        result = {}
-        base_name = os.path.splitext(sanitize_filename(filename))[0]
-        for stem, data in stems.items():
-            blob = await client.put(
-                f"results/{base_name}-{stem}.wav",
-                data,
-                access="public",
-                content_type="audio/wav",
-                add_random_suffix=True,
-            )
-            result[stem] = blob.url
-
-        return JSONResponse(content={"success": True, "stems": result})
-    except HTTPException:
-        raise
-    except Exception as e:
-        import traceback
-        traceback.print_exc()
-        raise HTTPException(status_code=500, detail=str(e))
-    finally:
-        await client.delete(source_ref)
-
 @app.function(image=image, secrets=[secret])
 @modal.asgi_app()
 def fastapi_app():
+    from fastapi import FastAPI, UploadFile, File, HTTPException, Header, Request
+    from fastapi.responses import JSONResponse
+    from vercel.blob import AsyncBlobClient
+
+    web_app = FastAPI()
+
+    def check_auth(authorization: str | None):
+        expected_token = os.environ.get("MODAL_AUTH_TOKEN")
+        if expected_token and authorization != f"Bearer {expected_token}":
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+    @web_app.post("/separate")
+    async def separate_audio(
+        audio: UploadFile = File(...),
+        authorization: str = Header(None)
+    ):
+        check_auth(authorization)
+
+        try:
+            audio_bytes = await audio.read()
+            if len(audio_bytes) > MAX_AUDIO_BYTES:
+                raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
+
+            filename = audio.filename or "input.wav"
+
+            # Call the heavy GPU function synchronously
+            stems = process_audio.remote(audio_bytes, filename)
+            result = {
+                stem: f"data:audio/wav;base64,{base64.b64encode(data).decode('utf-8')}"
+                for stem, data in stems.items()
+            }
+
+            return JSONResponse(content={"success": True, "stems": result})
+        except HTTPException:
+            raise
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
+
+    @web_app.post("/separate-blob")
+    async def separate_blob(
+        request: Request,
+        authorization: str = Header(None)
+    ):
+        check_auth(authorization)
+
+        payload = await request.json()
+        source_url = payload.get("sourceUrl")
+        source_pathname = payload.get("sourcePathname")
+        filename = payload.get("filename")
+
+        if not source_url:
+            raise HTTPException(status_code=400, detail="Missing sourceUrl.")
+
+        client = AsyncBlobClient()
+        source_ref = source_pathname or source_url
+
+        try:
+            source = await client.get(source_ref, access="public")
+            if source.size and source.size > MAX_AUDIO_BYTES:
+                raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
+
+            audio_bytes = source.content
+            if len(audio_bytes) > MAX_AUDIO_BYTES:
+                raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
+
+            input_filename = filename or os.path.basename(source.pathname) or "input.wav"
+            stems = process_audio.remote(audio_bytes, input_filename)
+
+            result = {}
+            base_name = os.path.splitext(sanitize_filename(input_filename))[0]
+            for stem, data in stems.items():
+                blob = await client.put(
+                    f"results/{base_name}-{stem}.wav",
+                    data,
+                    access="public",
+                    content_type="audio/wav",
+                    add_random_suffix=True,
+                )
+                result[stem] = blob.url
+
+            return JSONResponse(content={"success": True, "stems": result})
+        except HTTPException:
+            raise
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
+        finally:
+            await client.delete(source_ref)
+
     return web_app
