@@ -6,6 +6,9 @@
     "api/blob-upload.ts": {
       "maxDuration": 60
     },
+    "api/blob-audio.ts": {
+      "maxDuration": 60
+    },
     "api/separate-blob.ts": {
       "maxDuration": 60
     },

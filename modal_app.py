@@ -66,6 +66,27 @@ def process_audio(audio_data: bytes, filename: str):
             "other": accomp
         }
 
+def wav_to_mp3(wav_data: bytes, stem: str):
+    import tempfile
+    import os
+    import subprocess
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        wav_path = os.path.join(tempdir, f"{stem}.wav")
+        mp3_path = os.path.join(tempdir, f"{stem}.mp3")
+        with open(wav_path, "wb") as f:
+            f.write(wav_data)
+
+        subprocess.run(
+            ["ffmpeg", "-y", "-i", wav_path, "-codec:a", "libmp3lame", "-b:a", "192k", mp3_path],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        with open(mp3_path, "rb") as f:
+            return f.read()
+
 @app.function(image=image, gpu="T4", timeout=900, secrets=[secret])
 def process_blob(source_ref: str, filename: str | None = None):
     from vercel.blob import BlobClient
@@ -87,14 +108,19 @@ def process_blob(source_ref: str, filename: str | None = None):
         result = {}
         base_name = os.path.splitext(sanitize_filename(input_filename))[0]
         for stem, data in stems.items():
+            mp3_data = wav_to_mp3(data, stem)
             blob = client.put(
-                f"results/{base_name}-{stem}.wav",
-                data,
-                access="public",
-                content_type="audio/wav",
+                f"results/{base_name}-{stem}.mp3",
+                mp3_data,
+                access="private",
+                content_type="audio/mpeg",
                 add_random_suffix=True,
             )
-            result[stem] = blob.url
+            result[stem] = {
+                "url": blob.url,
+                "pathname": blob.pathname,
+                "contentType": "audio/mpeg",
+            }
 
         return {"success": True, "stems": result}
     finally:

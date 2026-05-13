@@ -11,6 +11,14 @@ const SERVER_UPLOAD_LIMIT_LABEL = '4.5MB';
 const JOB_POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS = 15 * 60_000;
 
+type StemResult = string | {
+  url: string;
+  pathname?: string;
+  contentType?: string;
+};
+
+type StemResults = Record<string, StemResult>;
+
 function createSafeBlobPathname(file: File) {
   const dotIndex = file.name.lastIndexOf('.');
   const rawBase = dotIndex === -1 ? file.name : file.name.slice(0, dotIndex);
@@ -34,11 +42,32 @@ function formatElapsed(ms: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
+function getStemUrl(stemResult: StemResult, download = false) {
+  if (typeof stemResult === 'string') {
+    return stemResult;
+  }
+
+  if (!stemResult.pathname) {
+    return stemResult.url;
+  }
+
+  const params = new URLSearchParams({ pathname: stemResult.pathname });
+  if (download) {
+    params.set('download', '1');
+  }
+
+  return `/api/blob-audio?${params.toString()}`;
+}
+
+function getStemEntries(stems: StemResults) {
+  return Object.entries(stems) as Array<[string, StemResult]>;
+}
+
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
-  const [result, setResult] = useState<Record<string, string> | null>(null);
+  const [result, setResult] = useState<StemResults | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [statusDetail, setStatusDetail] = useState('');
   const [processingElapsed, setProcessingElapsed] = useState(0);
@@ -136,7 +165,7 @@ export default function App() {
       }
 
       if (data.status === 'done') {
-        return data as { stems: Record<string, string> };
+        return data as { stems: StemResults };
       }
     }
 
@@ -370,7 +399,7 @@ export default function App() {
                   </div>
 
                   <div className="mt-4 pt-8 border-t border-white/5 flex flex-col gap-4">
-                    {Object.entries(result).map(([stem, url]) => (
+                    {getStemEntries(result).map(([stem, stemResult]) => (
                        <div key={stem} className="flex-1 bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
                          <div className="flex items-center gap-4 w-full">
                            <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex flex-shrink-0 items-center justify-center text-indigo-400">
@@ -378,11 +407,11 @@ export default function App() {
                            </div>
                            <div className="flex-1 w-full max-w-[200px] sm:max-w-xs">
                              <p className="text-sm font-semibold capitalize text-slate-200">{stem === 'other' ? 'Accompaniment (Other)' : stem}</p>
-                             <audio controls src={url} className="h-8 mt-2 w-full" />
+                             <audio controls src={getStemUrl(stemResult)} className="h-8 mt-2 w-full" />
                            </div>
                          </div>
                          <a
-                            href={url}
+                            href={getStemUrl(stemResult, true)}
                             download={`${stem}-${file?.name}`}
                             className="px-6 py-3 shrink-0 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] sm:text-xs font-bold uppercase transition-all flex items-center gap-2"
                          >
