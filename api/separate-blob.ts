@@ -38,9 +38,16 @@ export async function POST(request: Request) {
       'Content-Type': 'application/json',
     };
 
-    if (process.env.MODAL_AUTH_TOKEN) {
-      headers.Authorization = `Bearer ${process.env.MODAL_AUTH_TOKEN}`;
+    const modalAuthToken = process.env.MODAL_AUTH_TOKEN;
+    if (!modalAuthToken) {
+      await del(payload.sourcePathname || payload.sourceUrl);
+      return Response.json(
+        { error: 'Missing MODAL_AUTH_TOKEN in Vercel environment variables.' },
+        { status: 500 },
+      );
     }
+
+    headers.Authorization = `Bearer ${modalAuthToken}`;
 
     const modalResponse = await fetch(getBlobEndpoint(), {
       method: 'POST',
@@ -54,7 +61,11 @@ export async function POST(request: Request) {
     if (!modalResponse.ok) {
       await del(payload.sourcePathname || payload.sourceUrl);
       return Response.json(
-        { error: data.detail || data.error || 'Modal processing failed.' },
+        {
+          error: modalResponse.status === 401
+            ? 'Modal authorization failed. Check that Vercel MODAL_AUTH_TOKEN matches the Modal Secret.'
+            : data.detail || data.error || 'Modal processing failed.',
+        },
         { status: modalResponse.status },
       );
     }
