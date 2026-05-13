@@ -8,6 +8,8 @@ const MAX_FILE_SIZE_LABEL = '10MB';
 const DIRECT_UPLOAD_TIMEOUT_MS = 30_000;
 const SERVER_UPLOAD_LIMIT_BYTES = 4_500_000;
 const SERVER_UPLOAD_LIMIT_LABEL = '4.5MB';
+const JOB_POLL_INTERVAL_MS = 5_000;
+const JOB_TIMEOUT_MS = 15 * 60_000;
 
 function createSafeBlobPathname(file: File) {
   const dotIndex = file.name.lastIndexOf('.');
@@ -20,6 +22,18 @@ function createSafeBlobPathname(file: File) {
   return `sources/${id}-${base}.${extension}`;
 }
 
+function sleep(ms: number) {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+function formatElapsed(ms: number) {
+  const seconds = Math.max(0, Math.floor(ms / 1000));
+  const minutes = Math.floor(seconds / 60);
+  const remainingSeconds = seconds % 60;
+
+  return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
+}
+
 export default function App() {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
@@ -27,6 +41,7 @@ export default function App() {
   const [result, setResult] = useState<Record<string, string> | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
   const [statusDetail, setStatusDetail] = useState('');
+  const [processingElapsed, setProcessingElapsed] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const selectFile = (selected: File) => {
@@ -46,6 +61,7 @@ export default function App() {
     setResult(null);
     setUploadProgress(null);
     setStatusDetail('');
+    setProcessingElapsed(0);
   };
 
   const uploadViaClient = async (selectedFile: File) => {
@@ -99,6 +115,34 @@ export default function App() {
     return data as { url: string; pathname: string };
   };
 
+  const waitForSeparateJob = async (jobId: string) => {
+    const startedAt = Date.now();
+
+    while (Date.now() - startedAt < JOB_TIMEOUT_MS) {
+      await sleep(JOB_POLL_INTERVAL_MS);
+      const elapsed = Date.now() - startedAt;
+      setProcessingElapsed(elapsed);
+      setStatusDetail(`Modal is processing your audio (${formatElapsed(elapsed)} elapsed)...`);
+
+      const response = await fetch('/api/separate-status', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({ jobId }),
+      });
+      const data = await response.json();
+
+      if (!response.ok || data.status === 'error') {
+        throw new Error(data.error || 'Modal processing failed.');
+      }
+
+      if (data.status === 'done') {
+        return data as { stems: Record<string, string> };
+      }
+    }
+
+    throw new Error('Modal processing timed out after 15 minutes.');
+  };
+
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
     if (e.target.files && e.target.files[0]) {
       selectFile(e.target.files[0]);
@@ -138,7 +182,8 @@ export default function App() {
 
         setUploadProgress(100);
         setStatus('processing');
-        setStatusDetail('Sending upload to Modal...');
+        setProcessingElapsed(0);
+        setStatusDetail('Starting Modal processing job...');
         response = await fetch('/api/separate-blob', {
           method: 'POST',
           headers: { 'Content-Type': 'application/json' },
@@ -148,6 +193,19 @@ export default function App() {
             filename: file.name,
           }),
         });
+
+        const startData = await response.json();
+        if (!response.ok) {
+          throw new Error(startData.error || 'Failed to start Modal processing.');
+        }
+
+        const jobResult = await waitForSeparateJob(startData.jobId);
+        setResult(jobResult.stems);
+        setUploadProgress(null);
+        setStatusDetail('');
+        setProcessingElapsed(0);
+        setStatus('done');
+        return;
       } else {
         const formData = new FormData();
         formData.append('audio', file);
@@ -168,12 +226,14 @@ export default function App() {
       setResult(data.stems);
       setUploadProgress(null);
       setStatusDetail('');
+      setProcessingElapsed(0);
       setStatus('done');
     } catch (error) {
       console.error(error);
       setStatus('error');
       setUploadProgress(null);
       setStatusDetail('');
+      setProcessingElapsed(0);
       if (error instanceof DOMException && error.name === 'AbortError') {
         setErrorMessage('Upload timed out before reaching Vercel Blob. Please retry, or try a smaller audio file.');
       } else {
@@ -271,7 +331,11 @@ export default function App() {
                           {status === 'uploading' ? 'Uploading audio securely...' : 'Extracting stems using deep learning...'}
                           {status === 'uploading' && uploadProgress !== null ? ` ${uploadProgress}%` : ''}
                         </span>
-                        {statusDetail && <span className="text-slate-500 block">{statusDetail}</span>}
+                        {(statusDetail || (status === 'processing' && processingElapsed > 0)) && (
+                          <span className="text-slate-500 block">
+                            {statusDetail || `Modal is processing your audio (${formatElapsed(processingElapsed)} elapsed)...`}
+                          </span>
+                        )}
                       </div>
                       <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
                     </div>
@@ -335,6 +399,7 @@ export default function App() {
                       setResult(null);
                       setUploadProgress(null);
                       setStatusDetail('');
+                      setProcessingElapsed(0);
                     }}
                     className="mt-8 mx-auto px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
                   >

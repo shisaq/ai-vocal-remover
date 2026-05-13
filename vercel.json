@@ -9,6 +9,9 @@
     "api/separate-blob.ts": {
       "maxDuration": 60
     },
+    "api/separate-status.ts": {
+      "maxDuration": 60
+    },
     "api/upload-source.ts": {
       "maxDuration": 60
     }
