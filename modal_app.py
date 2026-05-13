@@ -107,10 +107,12 @@ def cleanup_blobs(pathnames: list[str], delay_seconds: int):
 def process_blob(source_ref: str, filename: str | None = None):
     from vercel.blob import BlobClient
 
-    client = BlobClient()
+    source_client = BlobClient()
+    result_token = os.environ.get("RESULT_BLOB_READ_WRITE_TOKEN")
+    result_client = BlobClient(token=result_token) if result_token else BlobClient()
 
     try:
-        source = client.get(source_ref, access="private")
+        source = source_client.get(source_ref, access="private")
         if source.size and source.size > MAX_AUDIO_BYTES:
             raise Exception("Audio file is too large. Maximum size is 10MB.")
 
@@ -126,7 +128,7 @@ def process_blob(source_ref: str, filename: str | None = None):
         base_name = os.path.splitext(sanitize_filename(input_filename))[0]
         for stem, data in stems.items():
             mp3_data = wav_to_mp3(data, stem)
-            blob = client.put(
+            blob = result_client.put(
                 f"results/{base_name}-{stem}.mp3",
                 mp3_data,
                 access="public",
@@ -144,7 +146,7 @@ def process_blob(source_ref: str, filename: str | None = None):
         cleanup_blobs.spawn(result_pathnames, RESULT_TTL_SECONDS)
         return {"success": True, "stems": result}
     finally:
-        client.delete(source_ref)
+        source_client.delete(source_ref)
 
 @app.function(image=image, secrets=[secret])
 @modal.asgi_app()
