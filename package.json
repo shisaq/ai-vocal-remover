@@ -12,7 +12,11 @@
     "lint": "tsc --noEmit"
   },
   "dependencies": {
+    "@sentry/node": "^10.53.1",
+    "@sentry/react": "^10.53.1",
+    "@supabase/supabase-js": "^2.105.4",
     "@tailwindcss/vite": "^4.1.14",
+    "@vercel/analytics": "^2.0.1",
     "@vercel/blob": "^2.3.3",
     "@vitejs/plugin-react": "^5.0.4",
     "dotenv": "^17.2.3",
@@ -22,6 +26,7 @@
     "multer": "^2.1.1",
     "react": "^19.0.1",
     "react-dom": "^19.0.1",
+    "stripe": "^22.1.1",
     "vite": "^6.2.3"
   },
   "devDependencies": {
