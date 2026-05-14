@@ -535,7 +535,9 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white">AI Vocal <span className="font-light opacity-50">Remover</span></h1>
+              <h1 className="text-2xl font-bold tracking-tight text-white" aria-label="AI Vocal Remover">
+                AI Vocal Remover
+              </h1>
             </div>
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3">
