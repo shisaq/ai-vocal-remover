@@ -14,6 +14,9 @@
     },
     "api/upload-source.ts": {
       "maxDuration": 60
+    },
+    "api/billing/webhook.ts": {
+      "maxDuration": 60
     }
   }
 }

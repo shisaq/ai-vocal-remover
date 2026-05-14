@@ -123,6 +123,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
   const [processingElapsed, setProcessingElapsed] = useState(0);
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [showHistory, setShowHistory] = useState(false);
+  const [showPricing, setShowPricing] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAuthenticated = Boolean(session);
   const planLabel = profile ? planLabels[profile.plan] : '试用';
@@ -164,6 +165,41 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     if (response.ok) {
       setJobs((current) => current.filter((job) => job.id !== jobId));
     }
+  };
+
+  const startCheckout = async (plan: 'pro_monthly' | 'pro_yearly') => {
+    if (!session) {
+      setErrorMessage('请先登录，再升级套餐。');
+      setStatus('error');
+      return;
+    }
+
+    const response = await fetch('/api/billing/checkout', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({ plan }),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to create checkout session.');
+    }
+
+    window.location.href = data.url;
+  };
+
+  const openCustomerPortal = async () => {
+    const response = await fetch('/api/billing/portal', {
+      method: 'POST',
+      headers: getAuthHeaders(),
+    });
+    const data = await response.json();
+
+    if (!response.ok) {
+      throw new Error(data.error || 'Failed to open billing portal.');
+    }
+
+    window.location.href = data.url;
   };
 
   const selectFile = (selected: File) => {
@@ -460,6 +496,12 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                 历史记录
               </button>
             )}
+            <button
+              onClick={() => setShowPricing((current) => !current)}
+              className="h-9 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-4 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/25"
+            >
+              升级
+            </button>
             {session && (
               <button
                 onClick={() => supabase?.auth.signOut()}
@@ -682,6 +724,46 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   </div>
                 ))}
               </div>
+            </section>
+          )}
+          {showPricing && (
+            <section className="mt-6 border-t border-white/10 pt-6">
+              <div className="mb-4">
+                <h2 className="text-sm font-semibold text-white">套餐</h2>
+                <p className="mt-1 text-xs text-slate-500">Pro 支持 100MB、15 分钟、4 stem 与高保真模式。退款与取消可在 Stripe Portal 自助处理。</p>
+              </div>
+              <div className="grid gap-3 sm:grid-cols-3">
+                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <p className="text-sm font-semibold text-white">Free</p>
+                  <p className="mt-1 text-2xl font-bold">¥0</p>
+                  <p className="mt-2 text-xs text-slate-400">每月 3 次，15MB，2 stem。</p>
+                </div>
+                <button
+                  onClick={() => startCheckout('pro_monthly').catch((error) => setErrorMessage(error.message))}
+                  className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 p-4 text-left hover:bg-indigo-500/20"
+                >
+                  <p className="text-sm font-semibold text-white">Pro 月度</p>
+                  <p className="mt-1 text-2xl font-bold">¥29</p>
+                  <p className="mt-2 text-xs text-slate-300">软限制 200 次/月，历史保留 30 天。</p>
+                </button>
+                <button
+                  onClick={() => startCheckout('pro_yearly').catch((error) => setErrorMessage(error.message))}
+                  className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-left hover:bg-emerald-500/20"
+                >
+                  <p className="text-sm font-semibold text-white">Pro 年度</p>
+                  <p className="mt-1 text-2xl font-bold">¥199</p>
+                  <p className="mt-2 text-xs text-slate-300">历史保留 90 天，适合长期二创。</p>
+                </button>
+              </div>
+              {profile?.plan !== 'free' && (
+                <button
+                  onClick={() => openCustomerPortal().catch((error) => setErrorMessage(error.message))}
+                  className="mt-4 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10"
+                >
+                  管理订阅
+                </button>
+              )}
+              <p className="mt-4 text-xs text-slate-500">仅供合法个人创作用途。因版权或平台限制导致无法处理的内容，可按退款政策申请处理。</p>
             </section>
           )}
         </div>
