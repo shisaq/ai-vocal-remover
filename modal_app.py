@@ -11,7 +11,7 @@ secret = modal.Secret.from_name("ai-vocal-remover-secrets")
 image = (
     modal.Image.debian_slim(python_version="3.10")
     .apt_install("ffmpeg") # ffmpeg is required for audio processing
-    .pip_install("demucs", "torchcodec", "fastapi[standard]", "python-multipart", "vercel")
+    .pip_install("demucs", "torchcodec", "fastapi[standard]", "python-multipart", "vercel", "yt-dlp")
 )
 
 app = modal.App("uvr5-demucs-app")
@@ -94,6 +94,74 @@ def wav_to_mp3(wav_data: bytes, stem: str):
 
         with open(mp3_path, "rb") as f:
             return f.read()
+
+@app.function(image=image, timeout=600, secrets=[secret])
+def fetch_from_url(source_url: str, max_bytes: int, max_duration_seconds: int):
+    import json
+    import tempfile
+    import os
+    import subprocess
+    from vercel.blob import BlobClient
+
+    with tempfile.TemporaryDirectory() as tempdir:
+        output_template = os.path.join(tempdir, "source.%(ext)s")
+        info = subprocess.run(
+            ["yt-dlp", "--dump-json", "--no-playlist", source_url],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+        metadata = json.loads(info.stdout)
+        duration = int(metadata.get("duration") or 0)
+
+        if duration and duration > max_duration_seconds:
+            raise Exception(f"Audio is too long. Maximum duration is {max_duration_seconds // 60} minutes.")
+
+        subprocess.run(
+            [
+                "yt-dlp",
+                "--no-playlist",
+                "-x",
+                "--audio-format", "mp3",
+                "--audio-quality", "0",
+                "-o", output_template,
+                source_url,
+            ],
+            check=True,
+            capture_output=True,
+            text=True,
+        )
+
+        files = [os.path.join(tempdir, name) for name in os.listdir(tempdir) if name.startswith("source.")]
+        if not files:
+            raise Exception("Downloaded audio file was not found.")
+
+        source_path = files[0]
+        size = os.path.getsize(source_path)
+        if size > max_bytes:
+            raise Exception(f"Imported audio is too large. Maximum size is {max_bytes // (1024 * 1024)}MB.")
+
+        title = metadata.get("title") or "imported-audio"
+        filename = f"{sanitize_blob_basename(title)}.mp3"
+        with open(source_path, "rb") as f:
+            audio_data = f.read()
+
+        client = BlobClient()
+        blob = client.put(
+            f"sources/url-{filename}",
+            audio_data,
+            access="public",
+            content_type="audio/mpeg",
+            add_random_suffix=True,
+        )
+
+        return {
+            "success": True,
+            "sourceUrl": blob.url,
+            "sourcePathname": blob.pathname,
+            "filename": filename,
+            "durationSeconds": duration,
+        }
 
 @app.function(image=image, timeout=RESULT_TTL_SECONDS + 300, secrets=[secret])
 def cleanup_blobs(pathnames: list[str], delay_seconds: int):
@@ -283,5 +351,28 @@ def fastapi_app():
                 content={"success": False, "status": "error", "error": str(e)},
                 status_code=500,
             )
+
+    @web_app.post("/url-import")
+    async def import_url(
+        request: Request,
+        authorization: str = Header(None)
+    ):
+        check_auth(authorization)
+
+        payload = await request.json()
+        source_url = payload.get("url")
+        max_bytes = int(payload.get("maxBytes") or MAX_AUDIO_BYTES)
+        max_duration_seconds = int(payload.get("maxDurationSeconds") or 300)
+
+        if not source_url:
+            raise HTTPException(status_code=400, detail="Missing url.")
+
+        try:
+            result = fetch_from_url.remote(source_url, max_bytes, max_duration_seconds)
+            return JSONResponse(content=result)
+        except Exception as e:
+            import traceback
+            traceback.print_exc()
+            raise HTTPException(status_code=500, detail=str(e))
 
     return web_app

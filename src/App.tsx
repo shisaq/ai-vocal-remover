@@ -124,6 +124,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [showHistory, setShowHistory] = useState(false);
   const [showPricing, setShowPricing] = useState(false);
+  const [sourceUrl, setSourceUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAuthenticated = Boolean(session);
   const planLabel = profile ? planLabels[profile.plan] : '试用';
@@ -352,6 +353,91 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     }
   };
 
+  const processSourceBlob = async (
+    sourceBlob: { url: string; pathname: string },
+    filename: string,
+    sizeForEstimate: number,
+    sourceType: 'upload' | 'url',
+  ) => {
+    setUploadProgress(100);
+    setStatus('processing');
+    setProcessingElapsed(0);
+    setStatusDetail('Starting Modal processing job...');
+    const response = await fetch('/api/separate-blob', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+      body: JSON.stringify({
+        sourceUrl: sourceBlob.url,
+        sourcePathname: sourceBlob.pathname,
+        filename,
+        sourceType,
+      }),
+    });
+
+    const startData = await response.json();
+    if (!response.ok) {
+      throw new Error(startData.error || 'Failed to start Modal processing.');
+    }
+
+    setProcessingProgress(PROCESSING_START_PROGRESS);
+    const jobResult = await waitForSeparateJob(startData.jobId, sizeForEstimate);
+    setResult(jobResult.stems);
+    if (!isAuthenticated) {
+      localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
+    }
+    await refreshProfile();
+    await loadJobs();
+    setUploadProgress(null);
+    setProcessingProgress(null);
+    setStatusDetail('');
+    setProcessingElapsed(0);
+    setStatus('done');
+  };
+
+  const handleUrlImport = async () => {
+    if (!sourceUrl) return;
+
+    if (!isAuthenticated && localStorage.getItem(TRIAL_STORAGE_KEY) === 'true') {
+      setStatus('error');
+      setErrorMessage('未登录试用额度已用完。请登录后继续分离更多音频。');
+      return;
+    }
+
+    setFile(null);
+    setStatus('uploading');
+    setUploadProgress(20);
+    setErrorMessage('');
+    setStatusDetail('正在抓取链接音频...');
+
+    try {
+      const response = await fetch('/api/url-import', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
+        body: JSON.stringify({ url: sourceUrl }),
+      });
+      const data = await response.json();
+
+      if (!response.ok) {
+        throw new Error(data.error || '链接导入失败，请改用手动上传。');
+      }
+
+      setUploadProgress(100);
+      await processSourceBlob(
+        { url: data.sourceUrl, pathname: data.sourcePathname },
+        data.filename || 'url-import.mp3',
+        8 * 1024 * 1024,
+        'url',
+      );
+    } catch (error) {
+      console.error(error);
+      setStatus('error');
+      setUploadProgress(null);
+      setProcessingProgress(null);
+      setStatusDetail('');
+      setErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred.');
+    }
+  };
+
   const handleStart = async () => {
     if (!file) return;
 
@@ -382,38 +468,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
           }
         }
 
-        setUploadProgress(100);
-        setStatus('processing');
-        setProcessingElapsed(0);
-        setStatusDetail('Starting Modal processing job...');
-        response = await fetch('/api/separate-blob', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-          body: JSON.stringify({
-            sourceUrl: sourceBlob.url,
-            sourcePathname: sourceBlob.pathname,
-            filename: file.name,
-          }),
-        });
-
-        const startData = await response.json();
-        if (!response.ok) {
-          throw new Error(startData.error || 'Failed to start Modal processing.');
-        }
-
-        setProcessingProgress(PROCESSING_START_PROGRESS);
-        const jobResult = await waitForSeparateJob(startData.jobId, file.size);
-        setResult(jobResult.stems);
-        if (!isAuthenticated) {
-          localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
-        }
-        await refreshProfile();
-        await loadJobs();
-        setUploadProgress(null);
-        setProcessingProgress(null);
-        setStatusDetail('');
-        setProcessingElapsed(0);
-        setStatus('done');
+        await processSourceBlob(sourceBlob, file.name, file.size, 'upload');
         return;
       } else {
         const formData = new FormData();
@@ -548,6 +603,25 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                     accept="audio/mpeg, audio/wav, .mp3, .wav"
                     className="hidden"
                   />
+
+                  <div className="mt-5 w-full rounded-2xl border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-col gap-3 sm:flex-row">
+                      <input
+                        value={sourceUrl}
+                        onChange={(event) => setSourceUrl(event.target.value)}
+                        placeholder="粘贴 B站 / 抖音 / 小红书 / YouTube 链接"
+                        className="min-h-11 flex-1 rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500"
+                      />
+                      <button
+                        onClick={handleUrlImport}
+                        disabled={!sourceUrl}
+                        className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                      >
+                        导入链接
+                      </button>
+                    </div>
+                    <p className="mt-3 text-xs text-slate-500">仅供个人合法创作使用；如平台限制抓取，请改用手动上传。</p>
+                  </div>
 
                   {file && (
                     <div className="w-full mt-6">

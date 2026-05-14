@@ -17,6 +17,9 @@
     },
     "api/billing/webhook.ts": {
       "maxDuration": 60
+    },
+    "api/url-import.ts": {
+      "maxDuration": 60
     }
   }
 }

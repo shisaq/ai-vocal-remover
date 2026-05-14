@@ -10,6 +10,7 @@ type SeparateBlobRequest = {
   sourceUrl: string;
   sourcePathname?: string;
   filename?: string;
+  sourceType?: 'upload' | 'url';
 };
 
 function getBlobEndpoint() {
@@ -103,7 +104,7 @@ export async function POST(request: Request) {
       .from('jobs')
       .insert({
         user_id: user.id,
-        source_type: 'upload',
+        source_type: payload.sourceType || 'upload',
         source_url: payload.sourceUrl,
         source_pathname: payload.sourcePathname,
         source_filename: payload.filename,
