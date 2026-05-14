@@ -1,7 +1,9 @@
 import React, { useState, useRef } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { upload } from '@vercel/blob/client';
-import { Upload, FileAudio, Play, Loader2, Download, AlertCircle } from 'lucide-react';
+import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, LogOut, UserCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
+import { planLabels, supabase, type Profile } from './lib/supabaseClient';
 
 const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
 const MAX_FILE_SIZE_LABEL = '10MB';
@@ -12,6 +14,7 @@ const JOB_POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS = 15 * 60_000;
 const PROCESSING_START_PROGRESS = 30;
 const PROCESSING_MAX_PROGRESS = 95;
+const TRIAL_STORAGE_KEY = 'ai-vocal-remover-trial-used';
 
 type StemResult = string | {
   url: string;
@@ -21,6 +24,12 @@ type StemResult = string | {
 };
 
 type StemResults = Record<string, StemResult>;
+
+type AppProps = {
+  session: Session | null;
+  profile: Profile | null;
+  refreshProfile: () => Promise<void>;
+};
 
 function createSafeBlobPathname(file: File) {
   const dotIndex = file.name.lastIndexOf('.');
@@ -95,7 +104,7 @@ function getStemEntries(stems: StemResults) {
   return Object.entries(stems) as Array<[string, StemResult]>;
 }
 
-export default function App() {
+export default function App({ session, profile, refreshProfile }: AppProps) {
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
@@ -105,6 +114,18 @@ export default function App() {
   const [statusDetail, setStatusDetail] = useState('');
   const [processingElapsed, setProcessingElapsed] = useState(0);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isAuthenticated = Boolean(session);
+  const planLabel = profile ? planLabels[profile.plan] : '试用';
+
+  const getAuthHeaders = () => {
+    if (!session?.access_token) {
+      return {};
+    }
+
+    return {
+      Authorization: `Bearer ${session.access_token}`,
+    };
+  };
 
   const selectFile = (selected: File) => {
     if (!selected.type.includes('audio') && !selected.name.endsWith('.mp3') && !selected.name.endsWith('.wav')) {
@@ -223,7 +244,7 @@ export default function App() {
 
       const response = await fetch('/api/separate-status', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
+        headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
         body: JSON.stringify({ jobId }),
       });
       const data = await response.json();
@@ -256,6 +277,12 @@ export default function App() {
   const handleStart = async () => {
     if (!file) return;
 
+    if (!isAuthenticated && localStorage.getItem(TRIAL_STORAGE_KEY) === 'true') {
+      setStatus('error');
+      setErrorMessage('未登录试用额度已用完。请登录后继续分离更多音频。');
+      return;
+    }
+
     setStatus('uploading');
     setErrorMessage('');
     setUploadProgress(import.meta.env.PROD ? 0 : null);
@@ -283,7 +310,7 @@ export default function App() {
         setStatusDetail('Starting Modal processing job...');
         response = await fetch('/api/separate-blob', {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json' },
+          headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
           body: JSON.stringify({
             sourceUrl: sourceBlob.url,
             sourcePathname: sourceBlob.pathname,
@@ -299,6 +326,10 @@ export default function App() {
         setProcessingProgress(PROCESSING_START_PROGRESS);
         const jobResult = await waitForSeparateJob(startData.jobId, file.size);
         setResult(jobResult.stems);
+        if (!isAuthenticated) {
+          localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
+        }
+        await refreshProfile();
         setUploadProgress(null);
         setProcessingProgress(null);
         setStatusDetail('');
@@ -312,6 +343,7 @@ export default function App() {
         setStatus('processing');
         response = await fetch('/api/separate', {
           method: 'POST',
+          headers: getAuthHeaders(),
           body: formData,
         });
       }
@@ -323,6 +355,10 @@ export default function App() {
       }
 
       setResult(data.stems);
+      if (!isAuthenticated) {
+        localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
+      }
+      await refreshProfile();
       setUploadProgress(null);
       setProcessingProgress(null);
       setStatusDetail('');
@@ -360,9 +396,26 @@ export default function App() {
               <h1 className="text-2xl font-bold tracking-tight text-white">AI Vocal <span className="font-light opacity-50">Remover</span></h1>
             </div>
           </div>
-          <div className="flex gap-4">
-            <div className="px-5 py-2.5 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium uppercase tracking-wider text-slate-400">
-              Powered by UVR5 (HTDemucs)
+          <div className="flex flex-wrap items-center justify-center gap-3">
+            <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300">
+              {profile?.plan === 'free' ? `${profile.monthly_jobs_used}/3 本月任务` : '高保真模式'}
+            </div>
+            <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300 flex items-center gap-2">
+              <UserCircle className="w-4 h-4 text-indigo-300" />
+              <span>{session?.user.email || '未登录'}</span>
+              <span className="text-indigo-300">{planLabel}</span>
+            </div>
+            {session && (
+              <button
+                onClick={() => supabase?.auth.signOut()}
+                className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 grid place-items-center"
+                title="登出"
+              >
+                <LogOut className="w-4 h-4" />
+              </button>
+            )}
+            <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium uppercase tracking-wider text-slate-400">
+              UVR5 / HTDemucs
             </div>
           </div>
         </header>
