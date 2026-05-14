@@ -1,7 +1,7 @@
-import { ensureProfile, requireUser } from '../_lib/auth';
-import { errorResponse, json } from '../_lib/http';
-import { getSupabaseAdmin } from '../_lib/supabase';
-import { getAppBaseUrl, getStripe } from '../_lib/stripe';
+import { ensureProfile, requireUser } from '../_lib/auth.js';
+import { errorResponse, json } from '../_lib/http.js';
+import { getSupabaseAdmin } from '../_lib/supabase.js';
+import { getAppBaseUrl, getStripe } from '../_lib/stripe.js';
 
 type CheckoutRequest = {
   plan: 'pro_monthly' | 'pro_yearly';

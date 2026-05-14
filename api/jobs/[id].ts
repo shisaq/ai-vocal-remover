@@ -1,7 +1,7 @@
 import { del } from '@vercel/blob';
-import { requireUser } from '../_lib/auth';
-import { errorResponse, json } from '../_lib/http';
-import { getSupabaseAdmin, type JobRecord } from '../_lib/supabase';
+import { requireUser } from '../_lib/auth.js';
+import { errorResponse, json } from '../_lib/http.js';
+import { getSupabaseAdmin, type JobRecord } from '../_lib/supabase.js';
 
 function getJobId(request: Request) {
   const url = new URL(request.url);

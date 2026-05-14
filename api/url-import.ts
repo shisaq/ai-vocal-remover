@@ -1,6 +1,6 @@
-import { getBearerToken, ensureProfile, requireUser } from './_lib/auth';
-import { errorResponse, json } from './_lib/http';
-import { PLAN_LIMITS } from './_lib/plans';
+import { getBearerToken, ensureProfile, requireUser } from './_lib/auth.js';
+import { errorResponse, json } from './_lib/http.js';
+import { PLAN_LIMITS } from './_lib/plans.js';
 
 type UrlImportRequest = {
   url: string;

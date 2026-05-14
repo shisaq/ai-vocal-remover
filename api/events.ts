@@ -1,6 +1,6 @@
-import { getBearerToken, requireUser } from './_lib/auth';
-import { errorResponse, json } from './_lib/http';
-import { getSupabaseAdmin } from './_lib/supabase';
+import { getBearerToken, requireUser } from './_lib/auth.js';
+import { errorResponse, json } from './_lib/http.js';
+import { getSupabaseAdmin } from './_lib/supabase.js';
 
 type EventRequest = {
   name: string;

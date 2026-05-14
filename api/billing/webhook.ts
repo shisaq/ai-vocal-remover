@@ -1,6 +1,6 @@
 import Stripe from 'stripe';
-import { getSupabaseAdmin } from '../_lib/supabase';
-import { getStripe } from '../_lib/stripe';
+import { getSupabaseAdmin } from '../_lib/supabase.js';
+import { getStripe } from '../_lib/stripe.js';
 
 function planFromPrice(priceId?: string | null) {
   if (priceId && priceId === process.env.STRIPE_PRICE_PRO_YEARLY) {

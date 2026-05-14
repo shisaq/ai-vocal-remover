@@ -1,4 +1,4 @@
-import { getSupabaseAdmin, getSupabaseAnon, type Profile } from './supabase';
+import { getSupabaseAdmin, getSupabaseAnon, type Profile } from './supabase.js';
 
 export type AuthedUser = {
   id: string;

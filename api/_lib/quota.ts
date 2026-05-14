@@ -1,5 +1,5 @@
-import { PLAN_LIMITS, formatBytes, normalizePlan } from './plans';
-import { getSupabaseAdmin, type Profile } from './supabase';
+import { PLAN_LIMITS, formatBytes, normalizePlan } from './plans.js';
+import { getSupabaseAdmin, type Profile } from './supabase.js';
 
 function monthHasElapsed(resetAt: string) {
   const resetTime = new Date(resetAt).getTime();

@@ -1,6 +1,6 @@
-import { requireUser } from './_lib/auth';
-import { errorResponse, json } from './_lib/http';
-import { getSupabaseAdmin } from './_lib/supabase';
+import { requireUser } from './_lib/auth.js';
+import { errorResponse, json } from './_lib/http.js';
+import { getSupabaseAdmin } from './_lib/supabase.js';
 
 export async function GET(request: Request) {
   try {

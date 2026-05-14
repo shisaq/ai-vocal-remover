@@ -1,6 +1,6 @@
-import { ensureProfile, requireUser } from '../_lib/auth';
-import { errorResponse, json } from '../_lib/http';
-import { getAppBaseUrl, getStripe } from '../_lib/stripe';
+import { ensureProfile, requireUser } from '../_lib/auth.js';
+import { errorResponse, json } from '../_lib/http.js';
+import { getAppBaseUrl, getStripe } from '../_lib/stripe.js';
 
 export async function POST(request: Request) {
   try {

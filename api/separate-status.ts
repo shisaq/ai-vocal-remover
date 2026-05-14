@@ -1,5 +1,5 @@
-import { getBearerToken, requireUser } from './_lib/auth';
-import { getSupabaseAdmin, type JobRecord } from './_lib/supabase';
+import { getBearerToken, requireUser } from './_lib/auth.js';
+import { getSupabaseAdmin, type JobRecord } from './_lib/supabase.js';
 
 type SeparateStatusRequest = {
   jobId: string;

@@ -1,6 +1,6 @@
 import { put } from '@vercel/blob';
-import { getBearerToken, ensureProfile, requireUser } from './_lib/auth';
-import { PLAN_LIMITS } from './_lib/plans';
+import { getBearerToken, ensureProfile, requireUser } from './_lib/auth.js';
+import { PLAN_LIMITS } from './_lib/plans.js';
 
 const SERVER_UPLOAD_LIMIT_BYTES = 4_500_000;
 

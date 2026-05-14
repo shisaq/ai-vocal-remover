@@ -1,8 +1,8 @@
 import { del, head } from '@vercel/blob';
-import { getBearerToken, ensureProfile, requireUser } from './_lib/auth';
-import { PLAN_LIMITS } from './_lib/plans';
-import { assertCanCreateJob, incrementMonthlyUsage } from './_lib/quota';
-import { getSupabaseAdmin } from './_lib/supabase';
+import { getBearerToken, ensureProfile, requireUser } from './_lib/auth.js';
+import { PLAN_LIMITS } from './_lib/plans.js';
+import { assertCanCreateJob, incrementMonthlyUsage } from './_lib/quota.js';
+import { getSupabaseAdmin } from './_lib/supabase.js';
 
 const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 
