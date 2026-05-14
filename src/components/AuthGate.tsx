@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState, type ReactNode } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { LogIn, Mail } from 'lucide-react';
 import { isSupabaseConfigured, supabase, type Profile } from '../lib/supabaseClient';
+import { getCanonicalOrigin } from '../lib/canonicalOrigin';
 
 type AuthGateProps = {
   children: (props: {
@@ -78,7 +79,7 @@ export function AuthGate({ children }: AuthGateProps) {
     const { error } = await supabase.auth.signInWithOtp({
       email,
       options: {
-        emailRedirectTo: window.location.origin,
+        emailRedirectTo: getCanonicalOrigin(),
       },
     });
     setAuthLoading(false);
@@ -91,7 +92,7 @@ export function AuthGate({ children }: AuthGateProps) {
     await supabase.auth.signInWithOAuth({
       provider: 'google',
       options: {
-        redirectTo: window.location.origin,
+        redirectTo: getCanonicalOrigin(),
       },
     });
   };

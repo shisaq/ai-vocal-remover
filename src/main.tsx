@@ -5,7 +5,10 @@ import { Analytics } from '@vercel/analytics/react';
 import App from './App.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
 import { CompliancePage, getCompliancePageKind } from './views/CompliancePages.tsx';
+import { redirectDefaultVercelHost } from './lib/canonicalOrigin.ts';
 import './index.css';
+
+redirectDefaultVercelHost();
 
 if (import.meta.env.VITE_SENTRY_DSN) {
   Sentry.init({
