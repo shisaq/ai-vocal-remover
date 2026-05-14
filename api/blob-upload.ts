@@ -1,6 +1,6 @@
 import { handleUpload, type HandleUploadBody } from '@vercel/blob/client';
 
-const MAX_AUDIO_BYTES = 10 * 1024 * 1024;
+const MAX_AUDIO_BYTES = 100 * 1024 * 1024;
 
 export async function POST(request: Request) {
   const body = (await request.json()) as HandleUploadBody;

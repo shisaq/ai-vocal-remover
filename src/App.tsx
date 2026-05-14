@@ -5,8 +5,8 @@ import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, LogOut, UserCi
 import { motion, AnimatePresence } from 'motion/react';
 import { planLabels, supabase, type Profile } from './lib/supabaseClient';
 
-const MAX_FILE_SIZE_BYTES = 10 * 1024 * 1024;
-const MAX_FILE_SIZE_LABEL = '10MB';
+const FREE_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
+const PRO_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
 const DIRECT_UPLOAD_TIMEOUT_MS = 30_000;
 const SERVER_UPLOAD_LIMIT_BYTES = 4_500_000;
 const SERVER_UPLOAD_LIMIT_LABEL = '4.5MB';
@@ -24,6 +24,14 @@ type StemResult = string | {
 };
 
 type StemResults = Record<string, StemResult>;
+type JobSummary = {
+  id: string;
+  source_filename: string | null;
+  status: 'queued' | 'processing' | 'done' | 'failed';
+  stems: StemResults | null;
+  created_at: string;
+  error: string | null;
+};
 
 type AppProps = {
   session: Session | null;
@@ -113,9 +121,15 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
   const [processingProgress, setProcessingProgress] = useState<number | null>(null);
   const [statusDetail, setStatusDetail] = useState('');
   const [processingElapsed, setProcessingElapsed] = useState(0);
+  const [jobs, setJobs] = useState<JobSummary[]>([]);
+  const [showHistory, setShowHistory] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAuthenticated = Boolean(session);
   const planLabel = profile ? planLabels[profile.plan] : '试用';
+  const maxFileSizeBytes = profile?.plan === 'pro_monthly' || profile?.plan === 'pro_yearly'
+    ? PRO_MAX_FILE_SIZE_BYTES
+    : FREE_MAX_FILE_SIZE_BYTES;
+  const maxFileSizeLabel = profile?.plan === 'pro_monthly' || profile?.plan === 'pro_yearly' ? '100MB' : '15MB';
 
   const getAuthHeaders = () => {
     if (!session?.access_token) {
@@ -127,14 +141,39 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     };
   };
 
+  const loadJobs = async () => {
+    if (!session) return;
+
+    const response = await fetch('/api/jobs', {
+      headers: getAuthHeaders(),
+    });
+    const data = await response.json();
+    if (response.ok) {
+      setJobs(data.jobs || []);
+    }
+  };
+
+  const deleteJob = async (jobId: string) => {
+    if (!session) return;
+
+    const response = await fetch(`/api/jobs/${jobId}`, {
+      method: 'DELETE',
+      headers: getAuthHeaders(),
+    });
+
+    if (response.ok) {
+      setJobs((current) => current.filter((job) => job.id !== jobId));
+    }
+  };
+
   const selectFile = (selected: File) => {
     if (!selected.type.includes('audio') && !selected.name.endsWith('.mp3') && !selected.name.endsWith('.wav')) {
       setErrorMessage('Please upload a valid MP3 or WAV file.');
       return;
     }
 
-    if (selected.size > MAX_FILE_SIZE_BYTES) {
-      setErrorMessage(`Please upload an audio file smaller than ${MAX_FILE_SIZE_LABEL}.`);
+    if (selected.size > maxFileSizeBytes) {
+      setErrorMessage(`Please upload an audio file smaller than ${maxFileSizeLabel}.`);
       return;
     }
 
@@ -187,6 +226,9 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       xhr.open('POST', '/api/upload-source');
       xhr.setRequestHeader('Content-Type', selectedFile.type || 'audio/mpeg');
       xhr.setRequestHeader('x-file-name', encodeURIComponent(selectedFile.name));
+      if (session?.access_token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${session.access_token}`);
+      }
       xhr.timeout = 60_000;
 
       xhr.upload.onprogress = (event) => {
@@ -330,6 +372,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
           localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
         }
         await refreshProfile();
+        await loadJobs();
         setUploadProgress(null);
         setProcessingProgress(null);
         setStatusDetail('');
@@ -359,6 +402,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
         localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
       }
       await refreshProfile();
+      await loadJobs();
       setUploadProgress(null);
       setProcessingProgress(null);
       setStatusDetail('');
@@ -407,6 +451,17 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
             </div>
             {session && (
               <button
+                onClick={() => {
+                  setShowHistory((current) => !current);
+                  void loadJobs();
+                }}
+                className="h-9 rounded-full border border-white/10 bg-white/5 px-4 text-xs font-semibold text-slate-300 hover:bg-white/10"
+              >
+                历史记录
+              </button>
+            )}
+            {session && (
+              <button
                 onClick={() => supabase?.auth.signOut()}
                 className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 grid place-items-center"
                 title="登出"
@@ -442,7 +497,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                     <p className="text-lg text-slate-300">
                       {file ? file.name : <><span className="text-indigo-400 font-semibold">Drop your audio file</span> here</>}
                     </p>
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Supporting MP3, WAV (Max {MAX_FILE_SIZE_LABEL})</p>
+                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Supporting MP3, WAV (Max {maxFileSizeLabel})</p>
                   </div>
                   <input
                     type="file"
@@ -588,6 +643,47 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
               )}
             </AnimatePresence>
           </div>
+          {session && showHistory && (
+            <section className="mt-6 border-t border-white/10 pt-6">
+              <div className="mb-4 flex items-center justify-between">
+                <h2 className="text-sm font-semibold text-white">历史记录</h2>
+                <button onClick={loadJobs} className="text-xs text-indigo-300 hover:text-indigo-200">刷新</button>
+              </div>
+              <div className="space-y-3">
+                {jobs.length === 0 && <p className="text-sm text-slate-500">暂无历史任务。</p>}
+                {jobs.map((job) => (
+                  <div key={job.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                    <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
+                      <div>
+                        <p className="text-sm font-medium text-slate-200">{job.source_filename || '未命名音频'}</p>
+                        <p className="text-xs text-slate-500">{new Date(job.created_at).toLocaleString()} · {job.status}</p>
+                      </div>
+                      <button
+                        onClick={() => deleteJob(job.id)}
+                        className="self-start rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 hover:bg-white/10 hover:text-white sm:self-auto"
+                      >
+                        删除
+                      </button>
+                    </div>
+                    {job.status === 'done' && job.stems && (
+                      <div className="mt-3 flex flex-wrap gap-2">
+                        {getStemEntries(job.stems).map(([stem, stemResult]) => (
+                          <a
+                            key={stem}
+                            href={getStemUrl(stemResult, true)}
+                            className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/20"
+                          >
+                            下载 {stem === 'other' ? 'accompaniment' : stem}
+                          </a>
+                        ))}
+                      </div>
+                    )}
+                    {job.status === 'failed' && <p className="mt-2 text-xs text-rose-300">{job.error}</p>}
+                  </div>
+                ))}
+              </div>
+            </section>
+          )}
         </div>
       </div>
   );
