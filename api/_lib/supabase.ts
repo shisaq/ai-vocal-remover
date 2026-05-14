@@ -29,10 +29,10 @@ export type JobRecord = {
 
 export function getSupabaseAdmin() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const serviceKey = process.env.SUPABASE_SERVICE_KEY;
+  const serviceKey = process.env.SUPABASE_SECRET_KEY || process.env.SUPABASE_SERVICE_KEY;
 
   if (!url || !serviceKey) {
-    throw new Error('Missing SUPABASE_URL and SUPABASE_SERVICE_KEY.');
+    throw new Error('Missing SUPABASE_URL and SUPABASE_SECRET_KEY.');
   }
 
   return createClient(url, serviceKey, {
@@ -45,10 +45,15 @@ export function getSupabaseAdmin() {
 
 export function getSupabaseAnon() {
   const url = process.env.SUPABASE_URL || process.env.VITE_SUPABASE_URL;
-  const anonKey = process.env.SUPABASE_ANON_KEY || process.env.VITE_SUPABASE_ANON_KEY;
+  const anonKey = (
+    process.env.SUPABASE_PUBLISHABLE_KEY ||
+    process.env.SUPABASE_ANON_KEY ||
+    process.env.VITE_SUPABASE_PUBLISHABLE_KEY ||
+    process.env.VITE_SUPABASE_ANON_KEY
+  );
 
   if (!url || !anonKey) {
-    throw new Error('Missing SUPABASE_URL and SUPABASE_ANON_KEY.');
+    throw new Error('Missing SUPABASE_URL and SUPABASE_PUBLISHABLE_KEY.');
   }
 
   return createClient(url, anonKey, {
