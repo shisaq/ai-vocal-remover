@@ -564,6 +564,12 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
             >
               升级
             </button>
+            <a
+              href="/pricing"
+              className="h-9 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-white/10"
+            >
+              Pricing
+            </a>
             {session && (
               <button
                 onClick={() => supabase?.auth.signOut()}
@@ -848,6 +854,12 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
             </section>
           )}
         </div>
+        <footer className="mt-6 flex flex-wrap justify-center gap-4 text-xs text-slate-500">
+          <a href="/pricing" className="hover:text-slate-300">Pricing</a>
+          <a href="/terms" className="hover:text-slate-300">Terms</a>
+          <a href="/privacy" className="hover:text-slate-300">Privacy</a>
+          <a href="/refund-policy" className="hover:text-slate-300">Refund Policy</a>
+        </footer>
       </div>
   );
 }
