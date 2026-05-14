@@ -542,11 +542,18 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
             <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300">
               {profile?.plan === 'free' ? `${profile.monthly_jobs_used}/3 本月任务` : '高保真模式'}
             </div>
-            <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300 flex items-center gap-2">
+            <button
+              onClick={() => {
+                if (!session) {
+                  window.dispatchEvent(new Event('open-auth-panel'));
+                }
+              }}
+              className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300 flex items-center gap-2 hover:bg-white/10"
+            >
               <UserCircle className="w-4 h-4 text-indigo-300" />
               <span>{session?.user.email || '未登录'}</span>
               <span className="text-indigo-300">{planLabel}</span>
-            </div>
+            </button>
             {session && (
               <button
                 onClick={() => {

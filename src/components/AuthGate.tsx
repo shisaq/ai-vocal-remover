@@ -18,6 +18,7 @@ export function AuthGate({ children }: AuthGateProps) {
   const [message, setMessage] = useState('');
   const [loading, setLoading] = useState(true);
   const [authLoading, setAuthLoading] = useState(false);
+  const [authPanelOpen, setAuthPanelOpen] = useState(false);
 
   const refreshProfile = useMemo(() => async () => {
     if (!supabase) {
@@ -60,6 +61,15 @@ export function AuthGate({ children }: AuthGateProps) {
     };
   }, [refreshProfile]);
 
+  useEffect(() => {
+    const openAuthPanel = () => setAuthPanelOpen(true);
+    window.addEventListener('open-auth-panel', openAuthPanel);
+
+    return () => {
+      window.removeEventListener('open-auth-panel', openAuthPanel);
+    };
+  }, []);
+
   const signInWithEmail = async () => {
     if (!supabase || !email) return;
 
@@ -101,14 +111,19 @@ export function AuthGate({ children }: AuthGateProps) {
   return (
     <>
       {children({ session, profile, refreshProfile })}
-      {!session && (
-        <div className="fixed inset-x-0 bottom-0 z-30 border-t border-white/10 bg-zinc-950/90 px-4 py-4 backdrop-blur">
-          <div className="mx-auto flex max-w-3xl flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+      {!session && authPanelOpen && (
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 px-4 py-5 backdrop-blur-sm sm:items-center">
+          <button
+            aria-label="关闭登录面板"
+            className="absolute inset-0 cursor-default"
+            onClick={() => setAuthPanelOpen(false)}
+          />
+          <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl">
             <div>
               <p className="text-sm font-semibold text-white">登录后解锁任务历史与套餐额度</p>
               <p className="text-xs text-zinc-400">未登录可试用 1 次，正式分离任务会绑定到你的账号。</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row">
+            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
               <label className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3">
                 <Mail className="h-4 w-4 text-zinc-400" />
                 <input
@@ -134,8 +149,14 @@ export function AuthGate({ children }: AuthGateProps) {
                 Google
               </button>
             </div>
+            <button
+              onClick={() => setAuthPanelOpen(false)}
+              className="mt-4 text-xs font-semibold text-zinc-500 hover:text-zinc-300"
+            >
+              暂不登录
+            </button>
+            {message && <p className="mt-3 text-xs text-indigo-300">{message}</p>}
           </div>
-          {message && <p className="mx-auto mt-2 max-w-3xl text-xs text-indigo-300">{message}</p>}
         </div>
       )}
     </>
