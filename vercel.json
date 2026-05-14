@@ -20,6 +20,9 @@
     },
     "api/url-import.ts": {
       "maxDuration": 60
+    },
+    "api/events.ts": {
+      "maxDuration": 60
     }
   }
 }

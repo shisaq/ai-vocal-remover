@@ -4,6 +4,7 @@ import { upload } from '@vercel/blob/client';
 import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, LogOut, UserCircle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { planLabels, supabase, type Profile } from './lib/supabaseClient';
+import { trackEvent } from './lib/events';
 
 const FREE_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 const PRO_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -186,6 +187,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       throw new Error(data.error || 'Failed to create checkout session.');
     }
 
+    trackEvent(session, 'upgrade_clicked', { plan });
     window.location.href = data.url;
   };
 
@@ -382,6 +384,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     setProcessingProgress(PROCESSING_START_PROGRESS);
     const jobResult = await waitForSeparateJob(startData.jobId, sizeForEstimate);
     setResult(jobResult.stems);
+    trackEvent(session, 'separation_completed', { sourceType });
     if (!isAuthenticated) {
       localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
     }
@@ -405,6 +408,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
 
     setFile(null);
     setStatus('uploading');
+    trackEvent(session, 'url_import_started');
     setUploadProgress(20);
     setErrorMessage('');
     setStatusDetail('正在抓取链接音频...');
@@ -447,7 +451,8 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       return;
     }
 
-    setStatus('uploading');
+      setStatus('uploading');
+      trackEvent(session, 'upload_started', { size: file.size });
     setErrorMessage('');
     setUploadProgress(import.meta.env.PROD ? 0 : null);
     setStatusDetail(import.meta.env.PROD ? 'Preparing upload...' : '');
@@ -489,6 +494,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       }
 
       setResult(data.stems);
+      trackEvent(session, 'separation_completed', { sourceType: 'upload' });
       if (!isAuthenticated) {
         localStorage.setItem(TRIAL_STORAGE_KEY, 'true');
       }
@@ -502,6 +508,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     } catch (error) {
       console.error(error);
       setStatus('error');
+      trackEvent(session, 'separation_failed', { message: error instanceof Error ? error.message : 'unknown' });
       setUploadProgress(null);
       setProcessingProgress(null);
       setStatusDetail('');
