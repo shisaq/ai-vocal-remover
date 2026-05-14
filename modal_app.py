@@ -3,7 +3,7 @@ import base64
 import os
 import re
 
-MAX_AUDIO_BYTES = 10 * 1024 * 1024
+MAX_AUDIO_BYTES = 100 * 1024 * 1024
 RESULT_TTL_SECONDS = int(os.environ.get("RESULT_TTL_SECONDS", "1800"))
 secret = modal.Secret.from_name("ai-vocal-remover-secrets")
 
@@ -27,7 +27,7 @@ def sanitize_blob_basename(filename: str):
     return safe[:80] or "track"
 
 @app.function(image=image, gpu="T4", timeout=900, secrets=[secret])
-def process_audio(audio_data: bytes, filename: str):
+def process_audio(audio_data: bytes, filename: str, model: str = "htdemucs", requested_stems: list[str] | None = None):
     import tempfile
     import os
     import subprocess
@@ -37,15 +37,20 @@ def process_audio(audio_data: bytes, filename: str):
         with open(input_path, "wb") as f:
             f.write(audio_data)
             
-        # Run Demucs: we use the two-stems option to separate vocals and accompaniment
         output_dir = os.path.join(tempdir, "output")
+        requested_stems = requested_stems or ["vocals", "other"]
+        requested_stems = [stem for stem in requested_stems if stem in ["vocals", "drums", "bass", "other"]]
+        if not requested_stems:
+            requested_stems = ["vocals", "other"]
+        model = model if model in ["htdemucs", "htdemucs_ft"] else "htdemucs"
         cmd = [
             "demucs",
-            "--two-stems", "vocals",
-            "-n", "htdemucs", # state-of-the-art model
+            "-n", model,
             "--out", output_dir,
             input_path
         ]
+        if requested_stems == ["vocals", "other"]:
+            cmd[1:1] = ["--two-stems", "vocals"]
         
         try:
             print("Running Demucs separation...")
@@ -54,25 +59,24 @@ def process_audio(audio_data: bytes, filename: str):
             print("Demucs error:", e.stderr)
             raise Exception("Demucs processing failed")
             
-        # Demucs output structure: output_dir/htdemucs/{track_name}/...
-        # Note: the input filename is used as the folder name but without extension and spaces replaced?
-        # Actually demucs might normalize the folder name. Let's list the output directory.
-        track_dir = os.listdir(os.path.join(output_dir, "htdemucs"))[0]
-        vocals_path = os.path.join(output_dir, "htdemucs", track_dir, "vocals.wav")
-        accomp_path = os.path.join(output_dir, "htdemucs", track_dir, "no_vocals.wav")
-        
-        if not os.path.exists(vocals_path) or not os.path.exists(accomp_path):
-            raise Exception("Output files not found after processing")
-            
-        with open(vocals_path, "rb") as f:
-            vocals = f.read()
-        with open(accomp_path, "rb") as f:
-            accomp = f.read()
-            
-        return {
-            "vocals": vocals,
-            "other": accomp
+        track_dir = os.listdir(os.path.join(output_dir, model))[0]
+        stem_dir = os.path.join(output_dir, model, track_dir)
+        stem_files = {
+            "vocals": "vocals.wav",
+            "drums": "drums.wav",
+            "bass": "bass.wav",
+            "other": "no_vocals.wav" if requested_stems == ["vocals", "other"] else "other.wav",
         }
+        result = {}
+
+        for stem in requested_stems:
+            stem_path = os.path.join(stem_dir, stem_files[stem])
+            if not os.path.exists(stem_path):
+                raise Exception(f"Output file not found after processing: {stem}")
+            with open(stem_path, "rb") as f:
+                result[stem] = f.read()
+
+        return result
 
 def wav_to_mp3(wav_data: bytes, stem: str):
     import tempfile
@@ -219,7 +223,7 @@ def sweep_expired_result_blobs():
     print(f"Sweep complete, deleted {deleted_count} expired result blobs")
 
 @app.function(image=image, gpu="T4", timeout=900, secrets=[secret])
-def process_blob(source_ref: str, filename: str | None = None):
+def process_blob(source_ref: str, filename: str | None = None, model: str = "htdemucs", requested_stems: list[str] | None = None):
     from vercel.blob import BlobClient
 
     client = BlobClient()
@@ -227,14 +231,14 @@ def process_blob(source_ref: str, filename: str | None = None):
     try:
         source = client.get(source_ref, access="public")
         if source.size and source.size > MAX_AUDIO_BYTES:
-            raise Exception("Audio file is too large. Maximum size is 10MB.")
+            raise Exception("Audio file is too large. Maximum size is 100MB.")
 
         audio_bytes = source.content
         if len(audio_bytes) > MAX_AUDIO_BYTES:
-            raise Exception("Audio file is too large. Maximum size is 10MB.")
+            raise Exception("Audio file is too large. Maximum size is 100MB.")
 
         input_filename = filename or os.path.basename(source.pathname) or "input.wav"
-        stems = process_audio.remote(audio_bytes, input_filename)
+        stems = process_audio.remote(audio_bytes, input_filename, model, requested_stems or ["vocals", "other"])
 
         result = {}
         result_pathnames = []
@@ -285,12 +289,12 @@ def fastapi_app():
         try:
             audio_bytes = await audio.read()
             if len(audio_bytes) > MAX_AUDIO_BYTES:
-                raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 10MB.")
+                raise HTTPException(status_code=413, detail="Audio file is too large. Maximum size is 100MB.")
 
             filename = audio.filename or "input.wav"
 
             # Call the heavy GPU function synchronously
-            stems = process_audio.remote(audio_bytes, filename)
+            stems = process_audio.remote(audio_bytes, filename, "htdemucs", ["vocals", "other"])
             result = {
                 stem: f"data:audio/wav;base64,{base64.b64encode(data).decode('utf-8')}"
                 for stem, data in stems.items()
@@ -315,6 +319,8 @@ def fastapi_app():
         source_url = payload.get("sourceUrl")
         source_pathname = payload.get("sourcePathname")
         filename = payload.get("filename")
+        model = payload.get("model") or "htdemucs"
+        stems = payload.get("stems") or ["vocals", "other"]
 
         if not source_url:
             raise HTTPException(status_code=400, detail="Missing sourceUrl.")
@@ -322,7 +328,7 @@ def fastapi_app():
         source_ref = source_pathname or source_url
 
         try:
-            function_call = process_blob.spawn(source_ref, filename)
+            function_call = process_blob.spawn(source_ref, filename, model, stems)
             return JSONResponse(content={"success": True, "jobId": function_call.object_id})
         except HTTPException:
             raise
