@@ -38,8 +38,3 @@ export type Profile = {
   monthly_reset_at: string;
 };
 
-export const planLabels: Record<Profile['plan'], string> = {
-  free: 'Free',
-  pro_monthly: 'Pro 月度',
-  pro_yearly: 'Pro 年度',
-};

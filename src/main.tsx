@@ -6,6 +6,7 @@ import App from './App.tsx';
 import { AuthGate } from './components/AuthGate.tsx';
 import { CompliancePage, getCompliancePageKind } from './views/CompliancePages.tsx';
 import { redirectDefaultVercelHost } from './lib/canonicalOrigin.ts';
+import { LanguageProvider } from './lib/i18n.tsx';
 import './index.css';
 
 redirectDefaultVercelHost();
@@ -21,15 +22,17 @@ const compliancePageKind = getCompliancePageKind(window.location.pathname);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    <AuthGate>
-      {(authProps) => (
-        compliancePageKind ? (
-          <CompliancePage kind={compliancePageKind} auth={authProps} />
-        ) : (
-          <App {...authProps} />
-        )
-      )}
-    </AuthGate>
-    <Analytics />
+    <LanguageProvider>
+      <AuthGate>
+        {(authProps) => (
+          compliancePageKind ? (
+            <CompliancePage kind={compliancePageKind} auth={authProps} />
+          ) : (
+            <App {...authProps} />
+          )
+        )}
+      </AuthGate>
+      <Analytics />
+    </LanguageProvider>
   </StrictMode>,
 );

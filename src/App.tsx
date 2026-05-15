@@ -1,11 +1,11 @@
 import React, { useState, useRef } from 'react';
 import type { Session } from '@supabase/supabase-js';
 import { upload } from '@vercel/blob/client';
-import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, LogOut, UserCircle } from 'lucide-react';
+import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, LogOut, UserCircle, Languages } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
-import { planLabels, supabase, type Profile } from './lib/supabaseClient';
+import { supabase, type Profile } from './lib/supabaseClient';
 import { trackEvent } from './lib/events';
-import { openPaddleCheckout } from './lib/paddle';
+import { useLanguage } from './lib/i18n';
 
 const FREE_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 const PRO_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -14,8 +14,6 @@ const SERVER_UPLOAD_LIMIT_BYTES = 4_500_000;
 const SERVER_UPLOAD_LIMIT_LABEL = '4.5MB';
 const JOB_POLL_INTERVAL_MS = 5_000;
 const JOB_TIMEOUT_MS = 15 * 60_000;
-const PROCESSING_START_PROGRESS = 30;
-const PROCESSING_MAX_PROGRESS = 95;
 const TRIAL_STORAGE_KEY = 'ai-vocal-remover-trial-used';
 
 type StemResult = string | {
@@ -41,6 +39,8 @@ type AppProps = {
   refreshProfile: () => Promise<void>;
 };
 
+type ProcessingPhase = 'queued' | 'separating' | 'encoding' | 'almost';
+
 function createSafeBlobPathname(file: File) {
   const dotIndex = file.name.lastIndexOf('.');
   const rawBase = dotIndex === -1 ? file.name : file.name.slice(0, dotIndex);
@@ -64,42 +64,12 @@ function formatElapsed(ms: number) {
   return `${minutes}:${remainingSeconds.toString().padStart(2, '0')}`;
 }
 
-function estimateProcessingDurationMs(fileSizeBytes: number) {
-  const fileSizeMb = fileSizeBytes / (1024 * 1024);
-  const estimatedSeconds = 25 + fileSizeMb * 6;
-
-  return Math.max(35_000, Math.min(120_000, estimatedSeconds * 1000));
-}
-
-function estimateProcessingProgress(elapsedMs: number, fileSizeBytes: number) {
-  const estimatedDurationMs = estimateProcessingDurationMs(fileSizeBytes);
-  const progressRange = PROCESSING_MAX_PROGRESS - PROCESSING_START_PROGRESS;
-  const ratio = Math.min(1, elapsedMs / estimatedDurationMs);
-  const easedRatio = 1 - Math.pow(1 - ratio, 2);
-
-  return Math.min(
-    PROCESSING_MAX_PROGRESS,
-    Math.round(PROCESSING_START_PROGRESS + progressRange * easedRatio),
-  );
-}
-
-function getProcessingStatusDetail(elapsedMs: number, fileSizeBytes: number) {
-  const progress = estimateProcessingProgress(elapsedMs, fileSizeBytes);
-  const elapsed = formatElapsed(elapsedMs);
-
-  if (progress < 45) {
-    return `Queued on Modal (${elapsed} elapsed)...`;
-  }
-
-  if (progress < 82) {
-    return `Separating vocals and accompaniment (${elapsed} elapsed)...`;
-  }
-
-  if (progress < PROCESSING_MAX_PROGRESS) {
-    return `Encoding and uploading results (${elapsed} elapsed)...`;
-  }
-
-  return `Almost done (${elapsed} elapsed)...`;
+function getProcessingPhase(elapsedMs: number): ProcessingPhase {
+  const seconds = elapsedMs / 1000;
+  if (seconds < 8) return 'queued';
+  if (seconds < 60) return 'separating';
+  if (seconds < 120) return 'encoding';
+  return 'almost';
 }
 
 function getStemUrl(stemResult: StemResult, download = false) {
@@ -115,25 +85,32 @@ function getStemEntries(stems: StemResults) {
 }
 
 export default function App({ session, profile, refreshProfile }: AppProps) {
+  const { t, locale, setLocale } = useLanguage();
   const [file, setFile] = useState<File | null>(null);
   const [status, setStatus] = useState<'idle' | 'uploading' | 'processing' | 'done' | 'error'>('idle');
   const [errorMessage, setErrorMessage] = useState('');
+  const [inlineErrorMessage, setInlineErrorMessage] = useState('');
   const [result, setResult] = useState<StemResults | null>(null);
   const [uploadProgress, setUploadProgress] = useState<number | null>(null);
-  const [processingProgress, setProcessingProgress] = useState<number | null>(null);
   const [statusDetail, setStatusDetail] = useState('');
   const [processingElapsed, setProcessingElapsed] = useState(0);
   const [jobs, setJobs] = useState<JobSummary[]>([]);
   const [showHistory, setShowHistory] = useState(false);
-  const [showPricing, setShowPricing] = useState(false);
   const [sourceUrl, setSourceUrl] = useState('');
   const fileInputRef = useRef<HTMLInputElement>(null);
   const isAuthenticated = Boolean(session);
-  const planLabel = profile ? planLabels[profile.plan] : '试用';
-  const maxFileSizeBytes = profile?.plan === 'pro_monthly' || profile?.plan === 'pro_yearly'
-    ? PRO_MAX_FILE_SIZE_BYTES
-    : FREE_MAX_FILE_SIZE_BYTES;
-  const maxFileSizeLabel = profile?.plan === 'pro_monthly' || profile?.plan === 'pro_yearly' ? '100MB' : '15MB';
+  const isProPlan = profile?.plan === 'pro_monthly' || profile?.plan === 'pro_yearly';
+  const planLabelKey = profile
+    ? profile.plan === 'pro_monthly'
+      ? 'header.plan_pro_monthly'
+      : profile.plan === 'pro_yearly'
+        ? 'header.plan_pro_yearly'
+        : 'header.plan_free_label'
+    : 'header.plan_trial';
+  const maxFileSizeBytes = isProPlan ? PRO_MAX_FILE_SIZE_BYTES : FREE_MAX_FILE_SIZE_BYTES;
+  const maxFileSizeLabel = isProPlan ? '100MB' : '15MB';
+  const processingPhase = getProcessingPhase(processingElapsed);
+  const elapsedLabel = formatElapsed(processingElapsed);
 
   const getAuthHeaders = () => {
     if (!session?.access_token) {
@@ -170,17 +147,6 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     }
   };
 
-  const startCheckout = async (plan: 'pro_monthly' | 'pro_yearly') => {
-    if (!session) {
-      setErrorMessage('请先登录，再升级套餐。');
-      setStatus('error');
-      return;
-    }
-
-    trackEvent(session, 'upgrade_clicked', { plan });
-    await openPaddleCheckout({ plan, session });
-  };
-
   const openCustomerPortal = async () => {
     const response = await fetch('/api/billing/portal', {
       method: 'POST',
@@ -189,7 +155,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     const data = await response.json();
 
     if (!response.ok) {
-      throw new Error(data.error || 'Failed to open billing portal.');
+      throw new Error(data.error || t('error.billing_portal'));
     }
 
     window.location.href = data.url;
@@ -197,21 +163,21 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
 
   const selectFile = (selected: File) => {
     if (!selected.type.includes('audio') && !selected.name.endsWith('.mp3') && !selected.name.endsWith('.wav')) {
-      setErrorMessage('Please upload a valid MP3 or WAV file.');
+      setInlineErrorMessage(t('error.invalid_file'));
       return;
     }
 
     if (selected.size > maxFileSizeBytes) {
-      setErrorMessage(`Please upload an audio file smaller than ${maxFileSizeLabel}.`);
+      setInlineErrorMessage(t('error.file_too_big', { max: maxFileSizeLabel }));
       return;
     }
 
     setFile(selected);
     setStatus('idle');
     setErrorMessage('');
+    setInlineErrorMessage('');
     setResult(null);
     setUploadProgress(null);
-    setProcessingProgress(null);
     setStatusDetail('');
     setProcessingElapsed(0);
   };
@@ -223,7 +189,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     }, DIRECT_UPLOAD_TIMEOUT_MS);
 
     try {
-      setStatusDetail('Connecting to Vercel Blob...');
+      setStatusDetail(t('progress.detail_connect_blob'));
 
       return await upload(createSafeBlobPathname(selectedFile), selectedFile, {
         access: 'public',
@@ -233,7 +199,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
         multipart: false,
         abortSignal: uploadController.signal,
         onUploadProgress: ({ percentage }) => {
-          setStatusDetail('Uploading directly to Vercel Blob...');
+          setStatusDetail(t('progress.detail_direct_blob'));
           setUploadProgress(Math.max(0, Math.min(100, Math.round(percentage))));
         },
       });
@@ -244,10 +210,10 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
 
   const uploadViaServerFallback = async (selectedFile: File) => {
     if (selectedFile.size > SERVER_UPLOAD_LIMIT_BYTES) {
-      throw new Error(`Direct Blob upload did not complete, and this file is too large for the server fallback. Please try a file under ${SERVER_UPLOAD_LIMIT_LABEL} or another browser.`);
+      throw new Error(t('error.fallback_too_big', { max: SERVER_UPLOAD_LIMIT_LABEL }));
     }
 
-    setStatusDetail(`Uploading through Vercel Function fallback (${SERVER_UPLOAD_LIMIT_LABEL} max)...`);
+    setStatusDetail(t('progress.detail_fallback', { max: SERVER_UPLOAD_LIMIT_LABEL }));
     setUploadProgress(0);
 
     const data = await new Promise<{ url: string; pathname: string }>((resolve, reject) => {
@@ -275,26 +241,26 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
         try {
           parsed = JSON.parse(xhr.responseText);
         } catch {
-          reject(new Error('Server fallback upload returned an invalid response.'));
+          reject(new Error(t('error.fallback_invalid_resp')));
           return;
         }
 
         if (xhr.status < 200 || xhr.status >= 300) {
-          reject(new Error(parsed?.error || 'Server fallback upload failed.'));
+          reject(new Error(parsed?.error || t('error.fallback_failed')));
           return;
         }
 
-        setStatusDetail('Source audio saved to Vercel Blob...');
+        setStatusDetail(t('progress.detail_saved_blob'));
         setUploadProgress(100);
         resolve(parsed);
       };
 
       xhr.onerror = () => {
-        reject(new Error('Server fallback upload failed due to a network error.'));
+        reject(new Error(t('error.fallback_network')));
       };
 
       xhr.ontimeout = () => {
-        reject(new Error('Server fallback upload timed out before Vercel Blob responded.'));
+        reject(new Error(t('error.fallback_timeout')));
       };
 
       xhr.send(selectedFile);
@@ -303,15 +269,13 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     return data;
   };
 
-  const waitForSeparateJob = async (jobId: string, fileSizeBytes: number) => {
+  const waitForSeparateJob = async (jobId: string) => {
     const startedAt = Date.now();
 
     while (Date.now() - startedAt < JOB_TIMEOUT_MS) {
       await sleep(JOB_POLL_INTERVAL_MS);
       const elapsed = Date.now() - startedAt;
       setProcessingElapsed(elapsed);
-      setProcessingProgress(estimateProcessingProgress(elapsed, fileSizeBytes));
-      setStatusDetail(getProcessingStatusDetail(elapsed, fileSizeBytes));
 
       const response = await fetch('/api/separate-status', {
         method: 'POST',
@@ -321,7 +285,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       const data = await response.json();
 
       if (!response.ok || data.status === 'error') {
-        throw new Error(data.error || 'Modal processing failed.');
+        throw new Error(data.error || t('error.modal_failed'));
       }
 
       if (data.status === 'done') {
@@ -329,7 +293,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       }
     }
 
-    throw new Error('Modal processing timed out after 15 minutes.');
+    throw new Error(t('error.modal_timeout'));
   };
 
   const handleFileChange = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -348,13 +312,12 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
   const processSourceBlob = async (
     sourceBlob: { url: string; pathname: string },
     filename: string,
-    sizeForEstimate: number,
     sourceType: 'upload' | 'url',
   ) => {
     setUploadProgress(100);
     setStatus('processing');
     setProcessingElapsed(0);
-    setStatusDetail('Starting Modal processing job...');
+    setStatusDetail(t('progress.detail_start_modal'));
     const response = await fetch('/api/separate-blob', {
       method: 'POST',
       headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
@@ -368,11 +331,10 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
 
     const startData = await response.json();
     if (!response.ok) {
-      throw new Error(startData.error || 'Failed to start Modal processing.');
+      throw new Error(startData.error || t('error.modal_failed'));
     }
 
-    setProcessingProgress(PROCESSING_START_PROGRESS);
-    const jobResult = await waitForSeparateJob(startData.jobId, sizeForEstimate);
+    const jobResult = await waitForSeparateJob(startData.jobId);
     setResult(jobResult.stems);
     trackEvent(session, 'separation_completed', { sourceType });
     if (!isAuthenticated) {
@@ -381,7 +343,6 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     await refreshProfile();
     await loadJobs();
     setUploadProgress(null);
-    setProcessingProgress(null);
     setStatusDetail('');
     setProcessingElapsed(0);
     setStatus('done');
@@ -392,7 +353,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
 
     if (!isAuthenticated && localStorage.getItem(TRIAL_STORAGE_KEY) === 'true') {
       setStatus('error');
-      setErrorMessage('未登录试用额度已用完。请登录后继续分离更多音频。');
+      setErrorMessage(t('error.trial_used'));
       return;
     }
 
@@ -401,7 +362,8 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
     trackEvent(session, 'url_import_started');
     setUploadProgress(20);
     setErrorMessage('');
-    setStatusDetail('正在抓取链接音频...');
+    setInlineErrorMessage('');
+    setStatusDetail(t('progress.detail_url_fetch'));
 
     try {
       const response = await fetch('/api/url-import', {
@@ -412,23 +374,21 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || '链接导入失败，请改用手动上传。');
+        throw new Error(data.error || t('error.url_import_failed'));
       }
 
       setUploadProgress(100);
       await processSourceBlob(
         { url: data.sourceUrl, pathname: data.sourcePathname },
         data.filename || 'url-import.mp3',
-        8 * 1024 * 1024,
         'url',
       );
     } catch (error) {
       console.error(error);
       setStatus('error');
       setUploadProgress(null);
-      setProcessingProgress(null);
       setStatusDetail('');
-      setErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred.');
+      setErrorMessage(error instanceof Error ? error.message : t('error.unknown'));
     }
   };
 
@@ -437,15 +397,16 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
 
     if (!isAuthenticated && localStorage.getItem(TRIAL_STORAGE_KEY) === 'true') {
       setStatus('error');
-      setErrorMessage('未登录试用额度已用完。请登录后继续分离更多音频。');
+      setErrorMessage(t('error.trial_used'));
       return;
     }
 
-      setStatus('uploading');
-      trackEvent(session, 'upload_started', { size: file.size });
+    setStatus('uploading');
+    trackEvent(session, 'upload_started', { size: file.size });
     setErrorMessage('');
+    setInlineErrorMessage('');
     setUploadProgress(import.meta.env.PROD ? 0 : null);
-    setStatusDetail(import.meta.env.PROD ? 'Preparing upload...' : '');
+    setStatusDetail(import.meta.env.PROD ? t('progress.detail_prepare') : '');
 
     try {
       let response: Response;
@@ -463,7 +424,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
           }
         }
 
-        await processSourceBlob(sourceBlob, file.name, file.size, 'upload');
+        await processSourceBlob(sourceBlob, file.name, 'upload');
         return;
       } else {
         const formData = new FormData();
@@ -480,7 +441,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       const data = await response.json();
 
       if (!response.ok) {
-        throw new Error(data.error || 'Failed to process audio.');
+        throw new Error(data.error || t('error.process_failed'));
       }
 
       setResult(data.stems);
@@ -491,7 +452,6 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       await refreshProfile();
       await loadJobs();
       setUploadProgress(null);
-      setProcessingProgress(null);
       setStatusDetail('');
       setProcessingElapsed(0);
       setStatus('done');
@@ -500,14 +460,33 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       setStatus('error');
       trackEvent(session, 'separation_failed', { message: error instanceof Error ? error.message : 'unknown' });
       setUploadProgress(null);
-      setProcessingProgress(null);
       setStatusDetail('');
       setProcessingElapsed(0);
       if (error instanceof DOMException && error.name === 'AbortError') {
-        setErrorMessage('Upload timed out before reaching Vercel Blob. Please retry, or try a smaller audio file.');
+        setErrorMessage(t('error.upload_timeout'));
       } else {
-        setErrorMessage(error instanceof Error ? error.message : 'Unknown error occurred.');
+        setErrorMessage(error instanceof Error ? error.message : t('error.unknown'));
       }
+    }
+  };
+
+  const stemDisplayName = (stem: string) => {
+    if (stem === 'other') return t('result.accompaniment');
+    return stem.charAt(0).toUpperCase() + stem.slice(1);
+  };
+
+  const historyStatusLabel = (jobStatus: JobSummary['status']) => t(`history.status.${jobStatus}`);
+
+  const processingDetailFallback = () => {
+    switch (processingPhase) {
+      case 'queued':
+        return t('progress.queued', { elapsed: elapsedLabel });
+      case 'separating':
+        return t('progress.separating', { elapsed: elapsedLabel });
+      case 'encoding':
+        return t('progress.encoding', { elapsed: elapsedLabel });
+      case 'almost':
+        return t('progress.almost', { elapsed: elapsedLabel });
     }
   };
 
@@ -532,7 +511,9 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
           </div>
           <div className="flex flex-wrap items-center justify-center gap-3">
             <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300">
-              {profile?.plan === 'free' ? `${profile.monthly_jobs_used}/3 本月任务` : '高保真模式'}
+              {profile?.plan === 'free'
+                ? t('header.plan_free', { used: profile.monthly_jobs_used })
+                : t('header.plan_pro')}
             </div>
             <button
               onClick={() => {
@@ -543,8 +524,8 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
               className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300 flex items-center gap-2 hover:bg-white/10"
             >
               <UserCircle className="w-4 h-4 text-indigo-300" />
-              <span>{session?.user.email || '未登录'}</span>
-              <span className="text-indigo-300">{planLabel}</span>
+              <span>{session?.user.email || t('header.unauth')}</span>
+              <span className="text-indigo-300">{t(planLabelKey)}</span>
             </button>
             {session && (
               <button
@@ -554,26 +535,37 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                 }}
                 className="h-9 rounded-full border border-white/10 bg-white/5 px-4 text-xs font-semibold text-slate-300 hover:bg-white/10"
               >
-                历史记录
+                {t('header.history')}
+              </button>
+            )}
+            <a
+              href="/pricing"
+              className="h-9 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/25"
+            >
+              {t('header.pricing')}
+            </a>
+            {session && isProPlan && (
+              <button
+                onClick={() => openCustomerPortal().catch((error) => setErrorMessage(error.message))}
+                className="h-9 rounded-full border border-white/10 bg-white/5 px-4 text-xs font-semibold text-slate-300 hover:bg-white/10"
+              >
+                {t('header.manage_subscription')}
               </button>
             )}
             <button
-              onClick={() => setShowPricing((current) => !current)}
-              className="h-9 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-4 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/25"
+              onClick={() => setLocale(locale === 'en' ? 'zh-CN' : 'en')}
+              className="h-9 rounded-full border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-300 hover:bg-white/10 flex items-center gap-1.5"
+              aria-label="Toggle language"
             >
-              升级
+              <Languages className="w-3.5 h-3.5" />
+              {t('header.lang_switch')}
             </button>
-            <a
-              href="/pricing"
-              className="h-9 rounded-full border border-white/10 bg-white/5 px-4 py-2 text-xs font-semibold text-slate-300 hover:bg-white/10"
-            >
-              Pricing
-            </a>
             {session && (
               <button
                 onClick={() => supabase?.auth.signOut()}
                 className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 grid place-items-center"
-                title="登出"
+                title={t('header.logout')}
+                aria-label={t('header.logout')}
               >
                 <LogOut className="w-4 h-4" />
               </button>
@@ -598,15 +590,15 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDrop}
-                    className="h-64 bg-white/5 backdrop-blur-2xl border border-dashed border-white/20 rounded-3xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-white/10 transition-colors"
+                    className="w-full h-64 bg-white/5 backdrop-blur-2xl border border-dashed border-white/20 rounded-3xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-white/10 transition-colors"
                   >
                     <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform mb-2">
                        <Upload className="w-8 h-8 text-indigo-400" />
                     </div>
                     <p className="text-lg text-slate-300">
-                      {file ? file.name : <><span className="text-indigo-400 font-semibold">Drop your audio file</span> here</>}
+                      {file ? file.name : <><span className="text-indigo-400 font-semibold">{t('upload.drop_hint_call')}</span> {t('upload.drop_hint_tail')}</>}
                     </p>
-                    <p className="text-xs text-slate-500 uppercase tracking-widest mt-1">Supporting MP3, WAV (Max {maxFileSizeLabel})</p>
+                    <p className="text-xs text-slate-500 mt-1">{t('upload.drop_supports', { max: maxFileSizeLabel })}</p>
                   </div>
                   <input
                     type="file"
@@ -616,12 +608,26 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                     className="hidden"
                   />
 
+                  {inlineErrorMessage && (
+                    <div
+                      role="alert"
+                      className="mt-4 w-full flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
+                    >
+                      <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
+                      <span>{inlineErrorMessage}</span>
+                    </div>
+                  )}
+
+                  {!isAuthenticated && (
+                    <p className="mt-3 text-xs text-slate-500">{t('upload.trial_note')}</p>
+                  )}
+
                   <div className="mt-5 w-full rounded-2xl border border-white/10 bg-black/20 p-4">
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <input
                         value={sourceUrl}
                         onChange={(event) => setSourceUrl(event.target.value)}
-                        placeholder="粘贴 B站 / 抖音 / 小红书 / YouTube 链接"
+                        placeholder={t('upload.url_placeholder')}
                         className="min-h-11 flex-1 rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500"
                       />
                       <button
@@ -629,20 +635,20 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                         disabled={!sourceUrl}
                         className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
                       >
-                        导入链接
+                        {t('upload.url_import')}
                       </button>
                     </div>
-                    <p className="mt-3 text-xs text-slate-500">仅供个人合法创作使用；如平台限制抓取，请改用手动上传。</p>
+                    <p className="mt-3 text-xs text-slate-500">{t('upload.url_note')}</p>
                   </div>
 
                   {file && (
                     <div className="w-full mt-6">
                       <button
                         onClick={handleStart}
-                        className="w-full py-5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl font-bold shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-3 transition-colors mt-2 uppercase tracking-wider"
+                        className="w-full py-5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl font-bold shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-3 transition-colors mt-2"
                       >
                         <Play className="w-5 h-5 fill-current" />
-                        START EXTRACTION
+                        {t('upload.start')}
                       </button>
                     </div>
                   )}
@@ -663,25 +669,22 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   <div className="space-y-4">
                     <div className="flex justify-between items-end text-xs">
                       <div className="space-y-1">
-                        <span className="text-slate-400 block">Status</span>
-                        <span className="text-indigo-400 font-semibold animate-pulse">
-                          {status === 'uploading' ? 'Uploading audio securely...' : 'Extracting stems using deep learning...'}
+                        <span className="text-slate-400 block">{t('progress.status_label')}</span>
+                        <span className="text-indigo-400 font-semibold">
+                          {status === 'uploading' ? t('progress.uploading') : t('progress.processing')}
                           {status === 'uploading' && uploadProgress !== null ? ` ${uploadProgress}%` : ''}
-                          {status === 'processing' && processingProgress !== null ? ` ${processingProgress}%` : ''}
                         </span>
-                        {(statusDetail || (status === 'processing' && processingElapsed > 0)) && (
-                          <span className="text-slate-500 block">
-                            {statusDetail || `Modal is processing your audio (${formatElapsed(processingElapsed)} elapsed)...`}
-                          </span>
-                        )}
+                        <span className="text-slate-500 block">
+                          {status === 'processing' ? processingDetailFallback() : statusDetail}
+                        </span>
                       </div>
                       <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
                     </div>
                     <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden relative">
-                      {(status === 'uploading' && uploadProgress !== null) || (status === 'processing' && processingProgress !== null) ? (
+                      {status === 'uploading' && uploadProgress !== null ? (
                         <div
                           className="absolute top-0 left-0 h-full bg-indigo-400 transition-[width] duration-300"
-                          style={{ width: `${status === 'uploading' ? uploadProgress : processingProgress}%` }}
+                          style={{ width: `${uploadProgress}%` }}
                         ></div>
                       ) : (
                         <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-indigo-600/30 via-indigo-400/80 to-indigo-600/30 animate-[translateX_2s_linear_infinite]" style={{backgroundSize: '200% 100%'}}></div>
@@ -702,9 +705,9 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   <div className="flex justify-between items-start mb-8">
                     <div>
                       <h3 className="text-lg font-medium">{file?.name}</h3>
-                      <p className="text-xs text-slate-500 mt-1 uppercase tracking-tight">Separation Complete · Links expire in 30 minutes</p>
+                      <p className="text-xs text-slate-500 mt-1">{t('result.complete')} · {t('result.expires')}</p>
                     </div>
-                    <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-[10px] font-bold rounded-md uppercase">Finished</span>
+                    <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-[10px] font-bold rounded-md uppercase">{t('result.finished')}</span>
                   </div>
 
                   <div className="mt-4 pt-8 border-t border-white/5 flex flex-col gap-4">
@@ -715,16 +718,16 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                              <FileAudio className="w-6 h-6" />
                            </div>
                            <div className="flex-1 w-full max-w-[200px] sm:max-w-xs">
-                             <p className="text-sm font-semibold capitalize text-slate-200">{stem === 'other' ? 'Accompaniment (Other)' : stem}</p>
+                             <p className="text-sm font-semibold text-slate-200">{stemDisplayName(stem)}</p>
                              <audio controls src={getStemUrl(stemResult)} className="h-8 mt-2 w-full" />
                            </div>
                          </div>
                          <a
                             href={getStemUrl(stemResult, true)}
                             download={`${stem}-${file?.name}`}
-                            className="px-6 py-3 shrink-0 bg-white/10 hover:bg-white/20 rounded-xl text-[10px] sm:text-xs font-bold uppercase transition-all flex items-center gap-2"
+                            className="px-6 py-3 shrink-0 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
                          >
-                            <Download className="w-4 h-4" /> Download
+                            <Download className="w-4 h-4" /> {t('result.download')}
                          </a>
                        </div>
                     ))}
@@ -739,9 +742,9 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                       setStatusDetail('');
                       setProcessingElapsed(0);
                     }}
-                    className="mt-8 mx-auto px-6 py-2 text-[10px] font-bold uppercase tracking-widest text-slate-500 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
+                    className="mt-8 mx-auto px-6 py-2 text-xs font-bold text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
                   >
-                    Process another track
+                    {t('result.process_another')}
                   </button>
                 </motion.div>
               )}
@@ -757,14 +760,17 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                     <div className="bg-rose-500/20 p-4 rounded-full mb-6 text-rose-400">
                       <AlertCircle className="w-12 h-12" />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">Processing Failed</h3>
+                    <h3 className="text-xl font-bold text-white mb-2">{t('error.title')}</h3>
                     <p className="text-rose-400 mb-8 max-w-md">{errorMessage}</p>
-                    
+
                     <button
-                      onClick={() => setStatus('idle')}
-                      className="px-6 py-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-xl transition-colors text-xs font-bold uppercase tracking-wider"
+                      onClick={() => {
+                        setStatus('idle');
+                        setErrorMessage('');
+                      }}
+                      className="px-6 py-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-xl transition-colors text-sm font-bold"
                     >
-                      Try Again
+                      {t('error.try_again')}
                     </button>
                   </div>
                 </motion.div>
@@ -774,23 +780,23 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
           {session && showHistory && (
             <section className="mt-6 border-t border-white/10 pt-6">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-white">历史记录</h2>
-                <button onClick={loadJobs} className="text-xs text-indigo-300 hover:text-indigo-200">刷新</button>
+                <h2 className="text-sm font-semibold text-white">{t('history.title')}</h2>
+                <button onClick={loadJobs} className="text-xs text-indigo-300 hover:text-indigo-200">{t('history.refresh')}</button>
               </div>
               <div className="space-y-3">
-                {jobs.length === 0 && <p className="text-sm text-slate-500">暂无历史任务。</p>}
+                {jobs.length === 0 && <p className="text-sm text-slate-500">{t('history.empty')}</p>}
                 {jobs.map((job) => (
                   <div key={job.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-medium text-slate-200">{job.source_filename || '未命名音频'}</p>
-                        <p className="text-xs text-slate-500">{new Date(job.created_at).toLocaleString()} · {job.status}</p>
+                        <p className="text-sm font-medium text-slate-200">{job.source_filename || t('history.unnamed')}</p>
+                        <p className="text-xs text-slate-500">{new Date(job.created_at).toLocaleString(locale)} · {historyStatusLabel(job.status)}</p>
                       </div>
                       <button
                         onClick={() => deleteJob(job.id)}
                         className="self-start rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 hover:bg-white/10 hover:text-white sm:self-auto"
                       >
-                        删除
+                        {t('history.delete')}
                       </button>
                     </div>
                     {job.status === 'done' && job.stems && (
@@ -801,7 +807,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                             href={getStemUrl(stemResult, true)}
                             className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/20"
                           >
-                            下载 {stem === 'other' ? 'accompaniment' : stem}
+                            {t('history.download_stem', { stem: stemDisplayName(stem) })}
                           </a>
                         ))}
                       </div>
@@ -812,52 +818,11 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
               </div>
             </section>
           )}
-          {showPricing && (
-            <section className="mt-6 border-t border-white/10 pt-6">
-              <div className="mb-4">
-                <h2 className="text-sm font-semibold text-white">套餐</h2>
-                <p className="mt-1 text-xs text-slate-500">Pro 支持 100MB、15 分钟、4 stem 与高保真模式。退款与取消可在 Paddle Portal 自助处理。</p>
-              </div>
-              <div className="grid gap-3 sm:grid-cols-3">
-                <div className="rounded-xl border border-white/10 bg-black/20 p-4">
-                  <p className="text-sm font-semibold text-white">Free</p>
-                  <p className="mt-1 text-2xl font-bold">¥0</p>
-                  <p className="mt-2 text-xs text-slate-400">每月 3 次，15MB，2 stem。</p>
-                </div>
-                <button
-                  onClick={() => startCheckout('pro_monthly').catch((error) => setErrorMessage(error.message))}
-                  className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 p-4 text-left hover:bg-indigo-500/20"
-                >
-                  <p className="text-sm font-semibold text-white">Pro 月度</p>
-                  <p className="mt-1 text-2xl font-bold">$4.99</p>
-                  <p className="mt-2 text-xs text-slate-300">软限制 200 次/月，历史保留 30 天。</p>
-                </button>
-                <button
-                  onClick={() => startCheckout('pro_yearly').catch((error) => setErrorMessage(error.message))}
-                  className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-left hover:bg-emerald-500/20"
-                >
-                  <p className="text-sm font-semibold text-white">Pro 年度</p>
-                  <p className="mt-1 text-2xl font-bold">$34.99</p>
-                  <p className="mt-2 text-xs text-slate-300">历史保留 90 天，适合长期二创。</p>
-                </button>
-              </div>
-              {profile?.plan !== 'free' && (
-                <button
-                  onClick={() => openCustomerPortal().catch((error) => setErrorMessage(error.message))}
-                  className="mt-4 rounded-lg border border-white/10 px-4 py-2 text-xs font-semibold text-slate-200 hover:bg-white/10"
-                >
-                  管理订阅
-                </button>
-              )}
-              <p className="mt-4 text-xs text-slate-500">仅供合法个人创作用途。因版权或平台限制导致无法处理的内容，可按退款政策申请处理。</p>
-            </section>
-          )}
         </div>
         <footer className="mt-6 flex flex-wrap justify-center gap-4 text-xs text-slate-500">
-          <a href="/pricing" className="hover:text-slate-300">Pricing</a>
-          <a href="/terms" className="hover:text-slate-300">Terms</a>
-          <a href="/privacy" className="hover:text-slate-300">Privacy</a>
-          <a href="/refund-policy" className="hover:text-slate-300">Refund Policy</a>
+          <a href="/terms" className="hover:text-slate-300">{t('footer.terms')}</a>
+          <a href="/privacy" className="hover:text-slate-300">{t('footer.privacy')}</a>
+          <a href="/refund-policy" className="hover:text-slate-300">{t('footer.refund')}</a>
         </footer>
       </div>
   );
