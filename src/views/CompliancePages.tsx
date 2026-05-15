@@ -1,10 +1,16 @@
-import type { ReactNode } from 'react';
+import { useState, type ReactNode } from 'react';
+import type { Session } from '@supabase/supabase-js';
 import { ArrowLeft, CheckCircle2 } from 'lucide-react';
+import { openPaddleCheckout } from '../lib/paddle';
+import { trackEvent } from '../lib/events';
 
 const updatedAt = 'May 14, 2026';
 const supportEmail = 'support@uulili.com';
 
 type PageKind = 'pricing' | 'terms' | 'privacy' | 'refund';
+type AuthProps = {
+  session: Session | null;
+};
 
 function PageShell({ title, description, children }: { title: string; description: string; children: ReactNode }) {
   return (
@@ -31,25 +37,81 @@ function PageShell({ title, description, children }: { title: string; descriptio
   );
 }
 
-function PricingPage() {
+function PricingPage({ auth }: { auth?: AuthProps }) {
+  const [checkoutError, setCheckoutError] = useState('');
+  const [checkoutPlan, setCheckoutPlan] = useState<'pro_monthly' | 'pro_yearly' | null>(null);
+
+  const startCheckout = async (plan: 'pro_monthly' | 'pro_yearly') => {
+    if (!auth?.session) {
+      window.dispatchEvent(new Event('open-auth-panel'));
+      return;
+    }
+
+    setCheckoutError('');
+    setCheckoutPlan(plan);
+    try {
+      trackEvent(auth.session, 'pricing_checkout_clicked', { plan, page: 'pricing' });
+      await openPaddleCheckout({ plan, session: auth.session });
+    } catch (error) {
+      setCheckoutError(error instanceof Error ? error.message : 'Unable to open checkout.');
+    } finally {
+      setCheckoutPlan(null);
+    }
+  };
+
   return (
     <PageShell
       title="Pricing"
       description="Simple plans for creators who need clean vocals, accompaniment, drums, bass, and other stems for lawful personal creative use."
     >
       <div className="grid gap-4 md:grid-cols-3">
+        <section className="rounded-lg border border-white/10 bg-white/5 p-5">
+          <h2 className="text-lg font-semibold">Free</h2>
+          <p className="mt-2 text-3xl font-bold text-white">$0</p>
+          <p className="mt-3 text-sm leading-6 text-zinc-400">3 jobs per month, up to 5 minutes, up to 15 MB, vocals and accompaniment stems.</p>
+          <a
+            href="/"
+            className="mt-5 inline-flex h-11 items-center justify-center rounded-lg border border-white/10 px-4 text-sm font-semibold text-zinc-200 hover:bg-white/10"
+          >
+            Start Free
+          </a>
+        </section>
         {[
-          ['Free', '$0', '3 jobs per month, up to 5 minutes, up to 15 MB, vocals and accompaniment stems.'],
-          ['Pro Monthly', '$4.99 / month', 'Up to 15 minutes, up to 100 MB, 4-stem output, high-fidelity mode, 30-day history.'],
-          ['Pro Yearly', '$34.99 / year', 'The same Pro features with annual billing and 90-day history retention.'],
-        ].map(([name, price, copy]) => (
-          <section key={name} className="rounded-lg border border-white/10 bg-white/5 p-5">
-            <h2 className="text-lg font-semibold">{name}</h2>
+          {
+            plan: 'pro_monthly' as const,
+            name: 'Pro Monthly',
+            price: '$4.99 / month',
+            copy: 'Up to 15 minutes, up to 100 MB, 4-stem output, high-fidelity mode, 30-day history.',
+            accent: 'border-indigo-400/40 bg-indigo-500/10 hover:bg-indigo-500/20',
+          },
+          {
+            plan: 'pro_yearly' as const,
+            name: 'Pro Yearly',
+            price: '$34.99 / year',
+            copy: 'The same Pro features with annual billing and 90-day history retention.',
+            accent: 'border-emerald-400/40 bg-emerald-500/10 hover:bg-emerald-500/20',
+          },
+        ].map(({ plan, name, price, copy, accent }) => (
+          <section key={name} className={`rounded-lg border p-5 ${accent}`}>
+            <h2 className="text-lg font-semibold text-white">{name}</h2>
             <p className="mt-2 text-3xl font-bold text-white">{price}</p>
-            <p className="mt-3 text-sm leading-6 text-zinc-400">{copy}</p>
+            <p className="mt-3 text-sm leading-6 text-zinc-300">{copy}</p>
+            <button
+              type="button"
+              onClick={() => void startCheckout(plan)}
+              disabled={checkoutPlan === plan}
+              className="mt-5 h-11 w-full rounded-lg bg-white px-4 text-sm font-bold text-zinc-950 hover:bg-zinc-200 disabled:cursor-wait disabled:opacity-70"
+            >
+              {checkoutPlan === plan ? 'Opening checkout...' : 'Buy with Paddle'}
+            </button>
           </section>
         ))}
       </div>
+      {checkoutError && (
+        <p className="mt-4 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+          {checkoutError}
+        </p>
+      )}
       <h2>Included</h2>
       <ul>
         <li>Upload MP3/WAV audio or import supported public media links.</li>
@@ -203,8 +265,8 @@ function RefundPage() {
   );
 }
 
-export function CompliancePage({ kind }: { kind: PageKind }) {
-  if (kind === 'pricing') return <PricingPage />;
+export function CompliancePage({ kind, auth }: { kind: PageKind; auth?: AuthProps }) {
+  if (kind === 'pricing') return <PricingPage auth={auth} />;
   if (kind === 'terms') return <TermsPage />;
   if (kind === 'privacy') return <PrivacyPage />;
   return <RefundPage />;

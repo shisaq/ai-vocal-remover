@@ -21,13 +21,15 @@ const compliancePageKind = getCompliancePageKind(window.location.pathname);
 
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
-    {compliancePageKind ? (
-      <CompliancePage kind={compliancePageKind} />
-    ) : (
-      <AuthGate>
-        {(authProps) => <App {...authProps} />}
-      </AuthGate>
-    )}
+    <AuthGate>
+      {(authProps) => (
+        compliancePageKind ? (
+          <CompliancePage kind={compliancePageKind} auth={authProps} />
+        ) : (
+          <App {...authProps} />
+        )
+      )}
+    </AuthGate>
     <Analytics />
   </StrictMode>,
 );
