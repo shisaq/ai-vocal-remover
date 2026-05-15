@@ -5,6 +5,7 @@ import { Upload, FileAudio, Play, Loader2, Download, AlertCircle, LogOut, UserCi
 import { motion, AnimatePresence } from 'motion/react';
 import { planLabels, supabase, type Profile } from './lib/supabaseClient';
 import { trackEvent } from './lib/events';
+import { openPaddleCheckout } from './lib/paddle';
 
 const FREE_MAX_FILE_SIZE_BYTES = 15 * 1024 * 1024;
 const PRO_MAX_FILE_SIZE_BYTES = 100 * 1024 * 1024;
@@ -176,19 +177,8 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
       return;
     }
 
-    const response = await fetch('/api/billing/checkout', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', ...getAuthHeaders() },
-      body: JSON.stringify({ plan }),
-    });
-    const data = await response.json();
-
-    if (!response.ok) {
-      throw new Error(data.error || 'Failed to create checkout session.');
-    }
-
     trackEvent(session, 'upgrade_clicked', { plan });
-    window.location.href = data.url;
+    await openPaddleCheckout({ plan, session });
   };
 
   const openCustomerPortal = async () => {
@@ -826,7 +816,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
             <section className="mt-6 border-t border-white/10 pt-6">
               <div className="mb-4">
                 <h2 className="text-sm font-semibold text-white">套餐</h2>
-                <p className="mt-1 text-xs text-slate-500">Pro 支持 100MB、15 分钟、4 stem 与高保真模式。退款与取消可在 Stripe Portal 自助处理。</p>
+                <p className="mt-1 text-xs text-slate-500">Pro 支持 100MB、15 分钟、4 stem 与高保真模式。退款与取消可在 Paddle Portal 自助处理。</p>
               </div>
               <div className="grid gap-3 sm:grid-cols-3">
                 <div className="rounded-xl border border-white/10 bg-black/20 p-4">
@@ -839,7 +829,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   className="rounded-xl border border-indigo-400/30 bg-indigo-500/10 p-4 text-left hover:bg-indigo-500/20"
                 >
                   <p className="text-sm font-semibold text-white">Pro 月度</p>
-                  <p className="mt-1 text-2xl font-bold">¥29</p>
+                  <p className="mt-1 text-2xl font-bold">$4.99</p>
                   <p className="mt-2 text-xs text-slate-300">软限制 200 次/月，历史保留 30 天。</p>
                 </button>
                 <button
@@ -847,7 +837,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   className="rounded-xl border border-emerald-400/30 bg-emerald-500/10 p-4 text-left hover:bg-emerald-500/20"
                 >
                   <p className="text-sm font-semibold text-white">Pro 年度</p>
-                  <p className="mt-1 text-2xl font-bold">¥199</p>
+                  <p className="mt-1 text-2xl font-bold">$34.99</p>
                   <p className="mt-2 text-xs text-slate-300">历史保留 90 天，适合长期二创。</p>
                 </button>
               </div>
