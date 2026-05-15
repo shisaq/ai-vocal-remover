@@ -101,8 +101,8 @@ export function AuthGate({ children }: AuthGateProps) {
 
   if (loading) {
     return (
-      <div className="min-h-screen bg-zinc-950 text-zinc-100 grid place-items-center">
-        <div className="text-sm text-zinc-400">{t('auth.loading')}</div>
+      <div className="min-h-screen text-[#305066] grid place-items-center">
+        <div className="toon-card px-6 py-4 font-display text-xl">{t('auth.loading')}</div>
       </div>
     );
   }
@@ -115,38 +115,38 @@ export function AuthGate({ children }: AuthGateProps) {
     <>
       {children({ session, profile, refreshProfile })}
       {!session && authPanelOpen && (
-        <div className="fixed inset-0 z-40 flex items-end justify-center bg-black/50 px-4 py-5 backdrop-blur-sm sm:items-center">
+        <div className="fixed inset-0 z-40 flex items-end justify-center bg-[#305066]/55 px-4 py-5 backdrop-blur-sm sm:items-center">
           <button
             aria-label={t('auth.close_panel')}
             className="absolute inset-0 cursor-default"
             onClick={() => setAuthPanelOpen(false)}
           />
-          <div className="relative w-full max-w-2xl rounded-2xl border border-white/10 bg-zinc-950 p-5 shadow-2xl">
+          <div className="relative w-full max-w-2xl toon-card p-6">
             <div>
-              <p className="text-sm font-semibold text-white">{t('auth.panel_title')}</p>
-              <p className="text-xs text-zinc-400">{t('auth.panel_subtitle')}</p>
+              <p className="font-display text-2xl text-[#305066]">{t('auth.panel_title')}</p>
+              <p className="text-sm text-[#305066]/75 font-bold mt-1">{t('auth.panel_subtitle')}</p>
             </div>
-            <div className="mt-4 flex flex-col gap-2 sm:flex-row">
-              <label className="flex h-10 items-center gap-2 rounded-lg border border-white/10 bg-white/5 px-3">
-                <Mail className="h-4 w-4 text-zinc-400" />
+            <div className="mt-5 flex flex-col gap-3 sm:flex-row">
+              <label className="toon-input flex h-12 items-center gap-2 px-3 flex-1">
+                <Mail className="h-4 w-4 text-[#0ea8e3]" />
                 <input
                   value={email}
                   onChange={(event) => setEmail(event.target.value)}
                   placeholder={t('auth.email_placeholder')}
-                  className="w-44 bg-transparent text-sm text-white outline-none placeholder:text-zinc-500"
+                  className="flex-1 bg-transparent text-sm outline-none font-bold text-[#305066] placeholder:text-[#305066]/45"
                   type="email"
                 />
               </label>
               <button
                 onClick={signInWithEmail}
                 disabled={authLoading || !email}
-                className="h-10 rounded-lg bg-white px-4 text-sm font-semibold text-zinc-950 disabled:cursor-not-allowed disabled:opacity-50"
+                className="toon-btn toon-btn-pink text-sm px-5"
               >
                 {t('auth.send_link')}
               </button>
               <button
                 onClick={signInWithGoogle}
-                className="flex h-10 items-center justify-center gap-2 rounded-lg border border-white/10 bg-white/5 px-4 text-sm font-semibold text-white hover:bg-white/10"
+                className="toon-btn toon-btn-sky text-sm px-5"
               >
                 <LogIn className="h-4 w-4" />
                 {t('auth.google')}
@@ -154,11 +154,11 @@ export function AuthGate({ children }: AuthGateProps) {
             </div>
             <button
               onClick={() => setAuthPanelOpen(false)}
-              className="mt-4 text-xs font-semibold text-zinc-500 hover:text-zinc-300"
+              className="mt-5 text-xs font-extrabold text-[#305066]/60 hover:text-[#305066] uppercase tracking-wide"
             >
               {t('auth.skip')}
             </button>
-            {message && <p className="mt-3 text-xs text-indigo-300">{message}</p>}
+            {message && <p className="mt-3 text-xs text-[#0ea8e3] font-extrabold">{message}</p>}
           </div>
         </div>
       )}

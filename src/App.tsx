@@ -491,70 +491,64 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
   };
 
   return (
-    <div className="min-h-screen bg-slate-950 text-slate-100 flex flex-col items-center justify-center p-6 font-sans overflow-hidden relative">
-      <div className="absolute top-[-100px] left-[-100px] w-[500px] h-[500px] bg-purple-600/20 rounded-full blur-[120px] pointer-events-none"></div>
-      <div className="absolute bottom-[-100px] right-[-100px] w-[600px] h-[600px] bg-blue-600/20 rounded-full blur-[150px] pointer-events-none"></div>
+    <div className="min-h-screen text-[#305066] flex flex-col items-center p-6 overflow-hidden relative">
+      <svg className="pointer-events-none absolute -top-10 -left-10 w-40 h-40 opacity-70" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#0ea8e3" stroke="#305066" strokeWidth="4" /></svg>
+      <svg className="pointer-events-none absolute top-32 right-8 w-24 h-24 opacity-80 toon-bounce" viewBox="0 0 100 100"><polygon points="50,5 61,38 95,38 67,58 78,92 50,72 22,92 33,58 5,38 39,38" fill="#db6968" stroke="#305066" strokeWidth="4" strokeLinejoin="round"/></svg>
+      <svg className="pointer-events-none absolute bottom-10 left-10 w-28 h-28 opacity-80" viewBox="0 0 100 100"><rect x="15" y="15" width="70" height="70" rx="18" fill="#f2e2c4" stroke="#305066" strokeWidth="4" transform="rotate(-12 50 50)"/></svg>
 
-      <div className="w-full max-w-3xl relative z-10 flex flex-col h-full flex-1 justify-center">
-        <header className="flex flex-col sm:flex-row justify-between items-center mb-12 border-b border-white/5 pb-6">
-          <div className="flex items-center gap-3 mb-4 sm:mb-0">
-            <div className="w-12 h-12 bg-indigo-500 rounded-xl flex items-center justify-center shadow-lg shadow-indigo-500/20">
-              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-white" fill="none" viewBox="0 0 24 24" stroke="currentColor">
-                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
+      <div className="w-full max-w-3xl relative z-10 flex flex-col">
+        <header className="mb-8 toon-card bg-white px-5 py-4 flex flex-col sm:flex-row sm:items-center sm:justify-between gap-4">
+          <a href="/" className="flex items-center gap-3 group">
+            <div className="w-14 h-14 rounded-2xl bg-[#db6968] border-[3px] border-[#305066] grid place-items-center shadow-[3px_3px_0_#305066] group-hover:rotate-[-6deg] transition-transform">
+              <svg xmlns="http://www.w3.org/2000/svg" className="w-7 h-7 text-[#fff8ea]" fill="none" viewBox="0 0 24 24" stroke="currentColor">
+                <path strokeLinecap="round" strokeLinejoin="round" strokeWidth="2.5" d="M9 19V6l12-3v13M9 19c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zm12-3c0 1.105-1.343 2-3 2s-3-.895-3-2 1.343-2 3-2 3 .895 3 2zM9 10l12-3" />
               </svg>
             </div>
             <div>
-              <h1 className="text-2xl font-bold tracking-tight text-white" aria-label="AI Vocal Remover">
+              <h1 className="font-display text-2xl text-[#305066] leading-none" aria-label="AI Vocal Remover">
                 AI Vocal Remover
               </h1>
+              <p className="text-[11px] font-extrabold uppercase tracking-widest text-[#0ea8e3] mt-1">UVR5 · HTDemucs</p>
             </div>
-          </div>
-          <div className="flex flex-wrap items-center justify-center gap-3">
-            <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300">
+          </a>
+
+          <nav className="flex flex-wrap items-center justify-center gap-2">
+            <span className="toon-chip" style={{background: '#f2e2c4'}}>
               {profile?.plan === 'free'
                 ? t('header.plan_free', { used: profile.monthly_jobs_used })
                 : t('header.plan_pro')}
-            </div>
+            </span>
             <button
-              onClick={() => {
-                if (!session) {
-                  window.dispatchEvent(new Event('open-auth-panel'));
-                }
-              }}
-              className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium text-slate-300 flex items-center gap-2 hover:bg-white/10"
+              onClick={() => { if (!session) window.dispatchEvent(new Event('open-auth-panel')); }}
+              className="toon-btn text-xs"
             >
-              <UserCircle className="w-4 h-4 text-indigo-300" />
-              <span>{session?.user.email || t('header.unauth')}</span>
-              <span className="text-indigo-300">{t(planLabelKey)}</span>
+              <UserCircle className="w-4 h-4" />
+              <span className="max-w-[140px] truncate">{session?.user.email || t('header.unauth')}</span>
+              <span className="text-[#db6968]">·</span>
+              <span className="text-[#0ea8e3]">{t(planLabelKey)}</span>
             </button>
             {session && (
               <button
-                onClick={() => {
-                  setShowHistory((current) => !current);
-                  void loadJobs();
-                }}
-                className="h-9 rounded-full border border-white/10 bg-white/5 px-4 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                onClick={() => { setShowHistory((c) => !c); void loadJobs(); }}
+                className="toon-btn text-xs"
               >
                 {t('header.history')}
               </button>
             )}
-            <a
-              href="/pricing"
-              className="h-9 rounded-full border border-indigo-400/30 bg-indigo-500/15 px-4 py-2 text-xs font-semibold text-indigo-100 hover:bg-indigo-500/25"
-            >
+            <a href="/pricing" className="toon-btn toon-btn-pink text-xs">
               {t('header.pricing')}
             </a>
             {session && isProPlan && (
               <button
                 onClick={() => openCustomerPortal().catch((error) => setErrorMessage(error.message))}
-                className="h-9 rounded-full border border-white/10 bg-white/5 px-4 text-xs font-semibold text-slate-300 hover:bg-white/10"
+                className="toon-btn text-xs"
               >
                 {t('header.manage_subscription')}
               </button>
             )}
             <button
               onClick={() => setLocale(locale === 'en' ? 'zh-CN' : 'en')}
-              className="h-9 rounded-full border border-white/10 bg-white/5 px-3 text-xs font-semibold text-slate-300 hover:bg-white/10 flex items-center gap-1.5"
+              className="toon-btn toon-btn-sky text-xs"
               aria-label="Toggle language"
             >
               <Languages className="w-3.5 h-3.5" />
@@ -563,20 +557,17 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
             {session && (
               <button
                 onClick={() => supabase?.auth.signOut()}
-                className="h-9 w-9 rounded-full border border-white/10 bg-white/5 text-slate-300 hover:bg-white/10 grid place-items-center"
+                className="toon-btn !p-2 !w-10 !h-10"
                 title={t('header.logout')}
                 aria-label={t('header.logout')}
               >
                 <LogOut className="w-4 h-4" />
               </button>
             )}
-            <div className="px-4 py-2 bg-white/5 backdrop-blur-md border border-white/10 rounded-full text-xs font-medium uppercase tracking-wider text-slate-400">
-              UVR5 / HTDemucs
-            </div>
-          </div>
+          </nav>
         </header>
 
-        <div className="bg-white/5 backdrop-blur-2xl border border-white/10 rounded-3xl shadow-2xl p-8 flex flex-col w-full">
+        <div className="toon-card p-6 sm:p-8 flex flex-col w-full">
             <AnimatePresence mode="wait">
               {status === 'idle' && (
                 <motion.div
@@ -590,15 +581,15 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                     onClick={() => fileInputRef.current?.click()}
                     onDragOver={(e) => e.preventDefault()}
                     onDrop={handleDrop}
-                    className="w-full h-64 bg-white/5 backdrop-blur-2xl border border-dashed border-white/20 rounded-3xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-white/10 transition-colors"
+                    className="w-full h-64 bg-[#f2e2c4] border-[3px] border-dashed border-[#305066] rounded-3xl flex flex-col items-center justify-center gap-2 group cursor-pointer hover:bg-[#fff8ea] transition-colors shadow-[6px_6px_0_#305066]"
                   >
-                    <div className="w-16 h-16 bg-white/5 rounded-full flex items-center justify-center group-hover:scale-110 transition-transform mb-2">
-                       <Upload className="w-8 h-8 text-indigo-400" />
+                    <div className="w-20 h-20 bg-[#0ea8e3] border-[3px] border-[#305066] rounded-full flex items-center justify-center mb-2 shadow-[3px_3px_0_#305066] group-hover:scale-110 group-hover:rotate-6 transition-transform">
+                       <Upload className="w-9 h-9 text-[#fff8ea]" strokeWidth={2.5} />
                     </div>
-                    <p className="text-lg text-slate-300">
-                      {file ? file.name : <><span className="text-indigo-400 font-semibold">{t('upload.drop_hint_call')}</span> {t('upload.drop_hint_tail')}</>}
+                    <p className="text-lg text-[#305066] font-extrabold">
+                      {file ? file.name : <><span className="text-[#db6968] font-display">{t('upload.drop_hint_call')}</span> {t('upload.drop_hint_tail')}</>}
                     </p>
-                    <p className="text-xs text-slate-500 mt-1">{t('upload.drop_supports', { max: maxFileSizeLabel })}</p>
+                    <p className="text-xs text-[#305066]/70 mt-1 font-bold uppercase tracking-wide">{t('upload.drop_supports', { max: maxFileSizeLabel })}</p>
                   </div>
                   <input
                     type="file"
@@ -611,7 +602,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   {inlineErrorMessage && (
                     <div
                       role="alert"
-                      className="mt-4 w-full flex items-start gap-3 rounded-2xl border border-rose-500/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200"
+                      className="mt-4 w-full flex items-start gap-3 rounded-2xl border-[3px] border-[#305066] bg-[#db6968] px-4 py-3 text-sm text-[#fff8ea] font-bold shadow-[3px_3px_0_#305066]"
                     >
                       <AlertCircle className="mt-0.5 h-4 w-4 flex-shrink-0" />
                       <span>{inlineErrorMessage}</span>
@@ -619,33 +610,33 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   )}
 
                   {!isAuthenticated && (
-                    <p className="mt-3 text-xs text-slate-500">{t('upload.trial_note')}</p>
+                    <p className="mt-3 text-xs text-[#305066]/70 font-bold">{t('upload.trial_note')}</p>
                   )}
 
-                  <div className="mt-5 w-full rounded-2xl border border-white/10 bg-black/20 p-4">
+                  <div className="mt-5 w-full toon-card-cream p-4">
                     <div className="flex flex-col gap-3 sm:flex-row">
                       <input
                         value={sourceUrl}
                         onChange={(event) => setSourceUrl(event.target.value)}
                         placeholder={t('upload.url_placeholder')}
-                        className="min-h-11 flex-1 rounded-xl border border-white/10 bg-white/5 px-4 text-sm text-white outline-none placeholder:text-slate-500"
+                        className="toon-input min-h-12 flex-1 text-sm"
                       />
                       <button
                         onClick={handleUrlImport}
                         disabled={!sourceUrl}
-                        className="rounded-xl bg-white px-4 py-3 text-sm font-bold text-slate-950 disabled:cursor-not-allowed disabled:opacity-50"
+                        className="toon-btn toon-btn-sky text-sm px-5"
                       >
                         {t('upload.url_import')}
                       </button>
                     </div>
-                    <p className="mt-3 text-xs text-slate-500">{t('upload.url_note')}</p>
+                    <p className="mt-3 text-xs text-[#305066]/80 font-bold">{t('upload.url_note')}</p>
                   </div>
 
                   {file && (
                     <div className="w-full mt-6">
                       <button
                         onClick={handleStart}
-                        className="w-full py-5 bg-indigo-500 hover:bg-indigo-400 text-white rounded-2xl font-bold shadow-2xl shadow-indigo-500/30 flex items-center justify-center gap-3 transition-colors mt-2"
+                        className="w-full py-5 toon-btn toon-btn-pink text-base rounded-2xl !shadow-[6px_6px_0_#305066] font-display tracking-wide"
                       >
                         <Play className="w-5 h-5 fill-current" />
                         {t('upload.start')}
@@ -662,34 +653,50 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   animate={{ opacity: 1, scale: 1 }}
                   className="py-16 flex flex-col"
                 >
-                  <div className="flex-1 flex items-center gap-[2px] h-32 mb-12 justify-center opacity-80">
-                    <div className="w-1 h-12 bg-white/10 rounded-full animate-pulse"></div><div className="w-1 h-20 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.1s'}}></div><div className="w-1 h-32 bg-indigo-500 rounded-full shadow-[0_0_15px_rgba(99,102,241,0.4)] animate-pulse" style={{animationDelay: '0.2s'}}></div><div className="w-1 h-24 bg-indigo-500 rounded-full animate-pulse" style={{animationDelay: '0.3s'}}></div><div className="w-1 h-16 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.4s'}}></div><div className="w-1 h-28 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.5s'}}></div><div className="w-1 h-14 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.6s'}}></div><div className="w-1 h-36 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.7s'}}></div><div className="w-1 h-20 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.8s'}}></div><div className="w-1 h-30 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '0.9s'}}></div><div className="w-1 h-18 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.0s'}}></div><div className="w-1 h-32 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.1s'}}></div><div className="w-1 h-22 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.2s'}}></div><div className="w-1 h-12 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.3s'}}></div><div className="w-1 h-32 bg-white/10 rounded-full animate-pulse" style={{animationDelay: '1.4s'}}></div>
+                  <div className="flex-1 flex items-end gap-1 h-32 mb-10 justify-center">
+                    {[12,20,32,24,16,28,14,36,20,30,18,32,22,12,32].map((h, i) => (
+                      <div
+                        key={i}
+                        className="w-2 rounded-full border-[2px] border-[#305066] toon-bounce"
+                        style={{
+                          height: `${h * 3}px`,
+                          background: i % 3 === 0 ? '#db6968' : i % 3 === 1 ? '#0ea8e3' : '#f2e2c4',
+                          animationDelay: `${i * 0.08}s`,
+                        }}
+                      />
+                    ))}
                   </div>
 
                   <div className="space-y-4">
                     <div className="flex justify-between items-end text-xs">
                       <div className="space-y-1">
-                        <span className="text-slate-400 block">{t('progress.status_label')}</span>
-                        <span className="text-indigo-400 font-semibold">
+                        <span className="block text-[11px] uppercase tracking-widest font-extrabold text-[#305066]/70">{t('progress.status_label')}</span>
+                        <span className="font-display text-xl text-[#db6968] block">
                           {status === 'uploading' ? t('progress.uploading') : t('progress.processing')}
                           {status === 'uploading' && uploadProgress !== null ? ` ${uploadProgress}%` : ''}
                         </span>
-                        <span className="text-slate-500 block">
+                        <span className="text-[#305066]/80 block font-bold">
                           {status === 'processing' ? processingDetailFallback() : statusDetail}
                         </span>
                       </div>
-                      <span className="flex items-center gap-2"><Loader2 className="w-4 h-4 text-indigo-400 animate-spin" /></span>
+                      <span className="flex items-center gap-2"><Loader2 className="w-5 h-5 text-[#0ea8e3] animate-spin" strokeWidth={3} /></span>
                     </div>
-                    <div className="h-2 w-full bg-slate-800 rounded-full overflow-hidden relative">
+                    <div className="h-5 w-full bg-[#fff8ea] border-[3px] border-[#305066] rounded-full overflow-hidden relative shadow-[3px_3px_0_#305066]">
                       {status === 'uploading' && uploadProgress !== null ? (
                         <div
-                          className="absolute top-0 left-0 h-full bg-indigo-400 transition-[width] duration-300"
+                          className="absolute top-0 left-0 h-full bg-[#0ea8e3] transition-[width] duration-300 border-r-[3px] border-[#305066]"
                           style={{ width: `${uploadProgress}%` }}
                         ></div>
                       ) : (
-                        <div className="absolute top-0 left-0 h-full w-full bg-gradient-to-r from-indigo-600/30 via-indigo-400/80 to-indigo-600/30 animate-[translateX_2s_linear_infinite]" style={{backgroundSize: '200% 100%'}}></div>
+                        <div
+                          className="absolute top-0 left-0 h-full w-full"
+                          style={{
+                            background: 'linear-gradient(90deg, #db6968 0%, #0ea8e3 50%, #db6968 100%)',
+                            backgroundSize: '200% 100%',
+                            animation: 'toon-shimmer 2s linear infinite',
+                          }}
+                        ></div>
                       )}
-                      <style>{`@keyframes translateX { 0% { background-position: 200% 0; } 100% { background-position: -200% 0; } }`}</style>
                     </div>
                   </div>
                 </motion.div>
@@ -702,35 +709,39 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   animate={{ opacity: 1, y: 0 }}
                   className="flex flex-col"
                 >
-                  <div className="flex justify-between items-start mb-8">
+                  <div className="flex justify-between items-start mb-6 gap-4">
                     <div>
-                      <h3 className="text-lg font-medium">{file?.name}</h3>
-                      <p className="text-xs text-slate-500 mt-1">{t('result.complete')} · {t('result.expires')}</p>
+                      <h3 className="font-display text-2xl text-[#305066] leading-tight">{file?.name}</h3>
+                      <p className="text-xs text-[#305066]/70 mt-2 font-bold uppercase tracking-wide">{t('result.complete')} · {t('result.expires')}</p>
                     </div>
-                    <span className="px-3 py-1 bg-indigo-500/20 text-indigo-400 text-[10px] font-bold rounded-md uppercase">{t('result.finished')}</span>
+                    <span className="toon-chip" style={{background: '#db6968', color: '#fff8ea'}}>{t('result.finished')}</span>
                   </div>
 
-                  <div className="mt-4 pt-8 border-t border-white/5 flex flex-col gap-4">
-                    {getStemEntries(result).map(([stem, stemResult]) => (
-                       <div key={stem} className="flex-1 bg-black/40 border border-white/5 rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4">
+                  <div className="mt-2 pt-6 border-t-[3px] border-dashed border-[#305066]/40 flex flex-col gap-4">
+                    {getStemEntries(result).map(([stem, stemResult], idx) => {
+                      const palette = ['#db6968', '#0ea8e3', '#f2e2c4', '#fff8ea'];
+                      const bg = palette[idx % palette.length];
+                      const txt = idx % palette.length < 2 ? '#fff8ea' : '#305066';
+                      return (
+                       <div key={stem} className="flex-1 bg-[#fff8ea] border-[3px] border-[#305066] rounded-2xl p-4 flex flex-col sm:flex-row items-center justify-between gap-4 shadow-[4px_4px_0_#305066]">
                          <div className="flex items-center gap-4 w-full">
-                           <div className="w-12 h-12 rounded-xl bg-indigo-500/20 flex flex-shrink-0 items-center justify-center text-indigo-400">
-                             <FileAudio className="w-6 h-6" />
+                           <div className="w-14 h-14 rounded-2xl border-[3px] border-[#305066] flex flex-shrink-0 items-center justify-center shadow-[2px_2px_0_#305066]" style={{background: bg, color: txt}}>
+                             <FileAudio className="w-7 h-7" strokeWidth={2.5} />
                            </div>
                            <div className="flex-1 w-full max-w-[200px] sm:max-w-xs">
-                             <p className="text-sm font-semibold text-slate-200">{stemDisplayName(stem)}</p>
+                             <p className="font-display text-base text-[#305066]">{stemDisplayName(stem)}</p>
                              <audio controls src={getStemUrl(stemResult)} className="h-8 mt-2 w-full" />
                            </div>
                          </div>
                          <a
                             href={getStemUrl(stemResult, true)}
                             download={`${stem}-${file?.name}`}
-                            className="px-6 py-3 shrink-0 bg-white/10 hover:bg-white/20 rounded-xl text-xs font-bold transition-all flex items-center gap-2"
+                            className="toon-btn toon-btn-ink text-xs px-5"
                          >
                             <Download className="w-4 h-4" /> {t('result.download')}
                          </a>
                        </div>
-                    ))}
+                    );})}
                   </div>
 
                   <button
@@ -742,7 +753,7 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                       setStatusDetail('');
                       setProcessingElapsed(0);
                     }}
-                    className="mt-8 mx-auto px-6 py-2 text-xs font-bold text-slate-400 hover:text-white bg-white/5 hover:bg-white/10 rounded-full transition-colors border border-white/5"
+                    className="mt-8 mx-auto toon-btn toon-btn-sky text-sm px-6"
                   >
                     {t('result.process_another')}
                   </button>
@@ -756,19 +767,19 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                   animate={{ opacity: 1, scale: 1 }}
                   className="py-12 flex flex-col items-center justify-center text-center"
                 >
-                  <div className="bg-rose-500/10 border border-rose-500/20 p-4 rounded-2xl flex flex-col items-center">
-                    <div className="bg-rose-500/20 p-4 rounded-full mb-6 text-rose-400">
-                      <AlertCircle className="w-12 h-12" />
+                  <div className="bg-[#fff8ea] border-[3px] border-[#305066] p-6 rounded-2xl flex flex-col items-center shadow-[6px_6px_0_#db6968] max-w-md">
+                    <div className="bg-[#db6968] border-[3px] border-[#305066] p-5 rounded-full mb-5 text-[#fff8ea] shadow-[3px_3px_0_#305066]">
+                      <AlertCircle className="w-10 h-10" strokeWidth={2.5} />
                     </div>
-                    <h3 className="text-xl font-bold text-white mb-2">{t('error.title')}</h3>
-                    <p className="text-rose-400 mb-8 max-w-md">{errorMessage}</p>
+                    <h3 className="font-display text-2xl text-[#305066] mb-2">{t('error.title')}</h3>
+                    <p className="text-[#305066]/80 mb-6 font-bold">{errorMessage}</p>
 
                     <button
                       onClick={() => {
                         setStatus('idle');
                         setErrorMessage('');
                       }}
-                      className="px-6 py-3 bg-rose-500/20 hover:bg-rose-500/30 text-rose-300 rounded-xl transition-colors text-sm font-bold"
+                      className="toon-btn toon-btn-pink text-sm px-6"
                     >
                       {t('error.try_again')}
                     </button>
@@ -778,23 +789,23 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
             </AnimatePresence>
           </div>
           {session && showHistory && (
-            <section className="mt-6 border-t border-white/10 pt-6">
+            <section className="mt-6 toon-card p-5">
               <div className="mb-4 flex items-center justify-between">
-                <h2 className="text-sm font-semibold text-white">{t('history.title')}</h2>
-                <button onClick={loadJobs} className="text-xs text-indigo-300 hover:text-indigo-200">{t('history.refresh')}</button>
+                <h2 className="font-display text-xl text-[#305066]">{t('history.title')}</h2>
+                <button onClick={loadJobs} className="toon-btn toon-btn-sky text-xs">{t('history.refresh')}</button>
               </div>
               <div className="space-y-3">
-                {jobs.length === 0 && <p className="text-sm text-slate-500">{t('history.empty')}</p>}
+                {jobs.length === 0 && <p className="text-sm text-[#305066]/70 font-bold">{t('history.empty')}</p>}
                 {jobs.map((job) => (
-                  <div key={job.id} className="rounded-xl border border-white/10 bg-black/20 p-4">
+                  <div key={job.id} className="rounded-2xl border-[3px] border-[#305066] bg-[#fff8ea] p-4 shadow-[3px_3px_0_#305066]">
                     <div className="flex flex-col gap-2 sm:flex-row sm:items-center sm:justify-between">
                       <div>
-                        <p className="text-sm font-medium text-slate-200">{job.source_filename || t('history.unnamed')}</p>
-                        <p className="text-xs text-slate-500">{new Date(job.created_at).toLocaleString(locale)} · {historyStatusLabel(job.status)}</p>
+                        <p className="text-sm font-extrabold text-[#305066]">{job.source_filename || t('history.unnamed')}</p>
+                        <p className="text-xs text-[#305066]/70 font-bold">{new Date(job.created_at).toLocaleString(locale)} · {historyStatusLabel(job.status)}</p>
                       </div>
                       <button
                         onClick={() => deleteJob(job.id)}
-                        className="self-start rounded-lg border border-white/10 px-3 py-2 text-xs text-slate-400 hover:bg-white/10 hover:text-white sm:self-auto"
+                        className="toon-btn text-xs self-start sm:self-auto"
                       >
                         {t('history.delete')}
                       </button>
@@ -805,24 +816,24 @@ export default function App({ session, profile, refreshProfile }: AppProps) {
                           <a
                             key={stem}
                             href={getStemUrl(stemResult, true)}
-                            className="rounded-lg bg-white/10 px-3 py-2 text-xs font-semibold text-slate-200 hover:bg-white/20"
+                            className="toon-btn toon-btn-pink text-xs"
                           >
                             {t('history.download_stem', { stem: stemDisplayName(stem) })}
                           </a>
                         ))}
                       </div>
                     )}
-                    {job.status === 'failed' && <p className="mt-2 text-xs text-rose-300">{job.error}</p>}
+                    {job.status === 'failed' && <p className="mt-2 text-xs text-[#db6968] font-extrabold">{job.error}</p>}
                   </div>
                 ))}
               </div>
             </section>
           )}
         </div>
-        <footer className="mt-6 flex flex-wrap justify-center gap-4 text-xs text-slate-500">
-          <a href="/terms" className="hover:text-slate-300">{t('footer.terms')}</a>
-          <a href="/privacy" className="hover:text-slate-300">{t('footer.privacy')}</a>
-          <a href="/refund-policy" className="hover:text-slate-300">{t('footer.refund')}</a>
+        <footer className="mt-8 flex flex-wrap justify-center gap-3 text-xs">
+          <a href="/terms" className="toon-btn text-xs">{t('footer.terms')}</a>
+          <a href="/privacy" className="toon-btn text-xs">{t('footer.privacy')}</a>
+          <a href="/refund-policy" className="toon-btn text-xs">{t('footer.refund')}</a>
         </footer>
       </div>
   );

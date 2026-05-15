@@ -19,7 +19,7 @@ function LanguageToggle() {
   return (
     <button
       onClick={() => setLocale(locale === 'en' ? 'zh-CN' : 'en')}
-      className="inline-flex h-9 items-center gap-1.5 rounded-full border border-white/10 bg-white/5 px-3 text-xs font-semibold text-zinc-300 hover:bg-white/10"
+      className="toon-btn toon-btn-sky text-xs"
       aria-label="Toggle language"
     >
       <Languages className="h-3.5 w-3.5" />
@@ -32,26 +32,28 @@ function PageShell({ title, description, children }: { title: string; descriptio
   const { t } = useLanguage();
 
   return (
-    <main className="min-h-screen bg-zinc-950 px-6 py-10 text-zinc-100">
-      <div className="mx-auto max-w-4xl">
-        <div className="flex items-center justify-between">
-          <a href="/" className="inline-flex items-center gap-2 text-sm font-medium text-zinc-400 hover:text-white">
+    <main className="min-h-screen px-6 py-10 text-[#305066] relative overflow-hidden">
+      <svg className="pointer-events-none absolute -top-12 -right-12 w-48 h-48 opacity-70" viewBox="0 0 100 100"><circle cx="50" cy="50" r="40" fill="#db6968" stroke="#305066" strokeWidth="4"/></svg>
+      <svg className="pointer-events-none absolute bottom-20 -left-10 w-32 h-32 opacity-70" viewBox="0 0 100 100"><rect x="15" y="15" width="70" height="70" rx="18" fill="#0ea8e3" stroke="#305066" strokeWidth="4" transform="rotate(8 50 50)"/></svg>
+      <div className="mx-auto max-w-4xl relative z-10">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <a href="/" className="toon-btn text-sm">
             <ArrowLeft className="h-4 w-4" />
             {t('page.back')}
           </a>
           <LanguageToggle />
         </div>
-        <header className="mt-10 border-b border-white/10 pb-8">
-          <p className="text-sm text-indigo-300">AI Vocal Remover</p>
-          <h1 className="mt-3 text-4xl font-bold tracking-tight text-white">{title}</h1>
-          <p className="mt-4 max-w-2xl text-base leading-7 text-zinc-400">{description}</p>
-          <p className="mt-4 text-xs text-zinc-500">{t('page.last_updated', { date: updatedAt })}</p>
+        <header className="mt-8 toon-card p-7">
+          <p className="font-display text-base text-[#db6968]">AI Vocal Remover</p>
+          <h1 className="mt-2 font-display text-5xl text-[#305066] leading-[1.05]">{title}</h1>
+          <p className="mt-4 max-w-2xl text-base leading-7 text-[#305066]/85 font-bold">{description}</p>
+          <p className="mt-4 text-xs text-[#305066]/60 font-extrabold uppercase tracking-wider">{t('page.last_updated', { date: updatedAt })}</p>
         </header>
-        <div className="prose prose-invert prose-zinc mt-8 max-w-none prose-headings:text-white prose-a:text-indigo-300">
+        <div className="mt-6 toon-card p-7 max-w-none prose-headings:text-[#305066] prose-headings:font-display prose-h2:text-2xl prose-h2:mt-6 prose-h2:mb-2 prose-a:text-[#0ea8e3] prose-a:font-extrabold prose-strong:text-[#305066] prose-li:my-1 prose-p:text-[#305066]/85 prose-p:font-semibold prose-ul:text-[#305066]/85 text-[15px]">
           {children}
         </div>
-        <footer className="mt-12 border-t border-white/10 pt-6 text-sm text-zinc-500">
-          {t('page.contact_prefix')}<a className="text-indigo-300" href={`mailto:${supportEmail}`}>{supportEmail}</a>{t('page.contact_suffix')}
+        <footer className="mt-8 toon-card-cream p-5 text-sm font-bold">
+          {t('page.contact_prefix')}<a className="text-[#db6968] underline decoration-wavy" href={`mailto:${supportEmail}`}>{supportEmail}</a>{t('page.contact_suffix')}
         </footer>
       </div>
     </main>
@@ -107,28 +109,25 @@ function PricingPage({ auth }: { auth?: AuthProps }) {
 
   return (
     <PageShell title={t('pricing.title')} description={t('pricing.description')}>
-      <div className="grid gap-4 md:grid-cols-3">
-        <section className="rounded-lg border border-white/10 bg-white/5 p-5">
-          <h2 className="text-lg font-semibold">{t('pricing.free_name')}</h2>
-          <p className="mt-2 text-3xl font-bold text-white">{t('pricing.free_price')}</p>
-          <p className="mt-3 text-sm leading-6 text-zinc-400">{t('pricing.free_copy')}</p>
-          <a
-            href="/"
-            className="mt-5 inline-flex h-11 items-center justify-center rounded-lg border border-white/10 px-4 text-sm font-semibold text-zinc-200 hover:bg-white/10"
-          >
+      <div className="not-prose grid gap-5 md:grid-cols-3">
+        <section className="toon-card-cream p-5 flex flex-col">
+          <h2 className="font-display text-xl text-[#305066]">{t('pricing.free_name')}</h2>
+          <p className="mt-2 font-display text-4xl text-[#db6968]">{t('pricing.free_price')}</p>
+          <p className="mt-3 text-sm leading-6 text-[#305066]/85 font-bold flex-1">{t('pricing.free_copy')}</p>
+          <a href="/" className="mt-5 toon-btn text-sm">
             {t('pricing.start_free')}
           </a>
         </section>
-        {proPlans.map(({ plan, name, price, copy, accent }) => (
-          <section key={name} className={`rounded-lg border p-5 ${accent}`}>
-            <h2 className="text-lg font-semibold text-white">{name}</h2>
-            <p className="mt-2 text-3xl font-bold text-white">{price}</p>
-            <p className="mt-3 text-sm leading-6 text-zinc-300">{copy}</p>
+        {proPlans.map(({ plan, name, price, copy }, idx) => (
+          <section key={name} className={idx === 0 ? 'toon-card-pink p-5 flex flex-col' : 'toon-card-sky p-5 flex flex-col'}>
+            <h2 className="font-display text-xl text-[#fff8ea]">{name}</h2>
+            <p className="mt-2 font-display text-4xl text-[#fff8ea]">{price}</p>
+            <p className="mt-3 text-sm leading-6 text-[#fff8ea]/95 font-bold flex-1">{copy}</p>
             <button
               type="button"
               onClick={() => void startCheckout(plan)}
               disabled={checkoutPlan === plan}
-              className="mt-5 h-11 w-full rounded-lg bg-white px-4 text-sm font-bold text-zinc-950 hover:bg-zinc-200 disabled:cursor-wait disabled:opacity-70"
+              className="mt-5 toon-btn toon-btn-ink text-sm"
             >
               {checkoutPlan === plan ? t('pricing.opening_checkout') : t('pricing.buy_with_paddle')}
             </button>
@@ -136,7 +135,7 @@ function PricingPage({ auth }: { auth?: AuthProps }) {
         ))}
       </div>
       {checkoutError && (
-        <p className="mt-4 rounded-lg border border-rose-400/30 bg-rose-500/10 px-4 py-3 text-sm text-rose-200">
+        <p className="not-prose mt-5 rounded-2xl border-[3px] border-[#305066] bg-[#db6968] px-4 py-3 text-sm text-[#fff8ea] font-bold shadow-[3px_3px_0_#305066]">
           {checkoutError}
         </p>
       )}

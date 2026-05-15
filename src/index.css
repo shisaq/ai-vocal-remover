@@ -1,1 +1,133 @@
 @import "tailwindcss";
+
+:root {
+  --ink: #305066;
+  --pink: #db6968;
+  --cream: #f2e2c4;
+  --sky: #0ea8e3;
+  --paper: #fff8ea;
+}
+
+html, body {
+  background-color: var(--cream);
+  color: var(--ink);
+  font-family: "Nunito", system-ui, sans-serif;
+  font-weight: 700;
+}
+
+body {
+  background-image:
+    radial-gradient(circle at 20% 10%, rgba(14, 168, 227, 0.12) 0, transparent 35%),
+    radial-gradient(circle at 85% 80%, rgba(219, 105, 104, 0.14) 0, transparent 38%),
+    radial-gradient(circle at 50% 50%, rgba(48, 80, 102, 0.05) 0, transparent 50%);
+}
+
+.font-display {
+  font-family: "Bagel Fat One", "Nunito", system-ui, sans-serif;
+  font-weight: 400;
+  letter-spacing: 0.01em;
+}
+
+.toon-card {
+  background: #fff;
+  border: 3px solid var(--ink);
+  border-radius: 1.5rem;
+  box-shadow: 6px 6px 0 var(--ink);
+}
+
+.toon-card-pink {
+  background: var(--pink);
+  border: 3px solid var(--ink);
+  border-radius: 1.5rem;
+  box-shadow: 6px 6px 0 var(--ink);
+  color: #fff8ea;
+}
+
+.toon-card-sky {
+  background: var(--sky);
+  border: 3px solid var(--ink);
+  border-radius: 1.5rem;
+  box-shadow: 6px 6px 0 var(--ink);
+  color: #fff8ea;
+}
+
+.toon-card-cream {
+  background: var(--cream);
+  border: 3px solid var(--ink);
+  border-radius: 1.5rem;
+  box-shadow: 6px 6px 0 var(--ink);
+  color: var(--ink);
+}
+
+.toon-btn {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 0.5rem;
+  border: 3px solid var(--ink);
+  border-radius: 999px;
+  background: #fff;
+  color: var(--ink);
+  padding: 0.55rem 1rem;
+  font-weight: 800;
+  box-shadow: 3px 3px 0 var(--ink);
+  transition: transform 0.08s ease, box-shadow 0.08s ease, background 0.15s ease;
+  cursor: pointer;
+}
+.toon-btn:hover:not(:disabled) {
+  transform: translate(-1px, -1px);
+  box-shadow: 4px 4px 0 var(--ink);
+}
+.toon-btn:active:not(:disabled) {
+  transform: translate(2px, 2px);
+  box-shadow: 1px 1px 0 var(--ink);
+}
+.toon-btn:disabled {
+  opacity: 0.55;
+  cursor: not-allowed;
+  box-shadow: 2px 2px 0 var(--ink);
+}
+
+.toon-btn-pink { background: var(--pink); color: #fff8ea; }
+.toon-btn-sky { background: var(--sky); color: #fff8ea; }
+.toon-btn-ink { background: var(--ink); color: var(--cream); }
+
+.toon-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.4rem;
+  border: 3px solid var(--ink);
+  background: #fff;
+  border-radius: 999px;
+  padding: 0.3rem 0.75rem;
+  font-weight: 800;
+  font-size: 0.72rem;
+  text-transform: uppercase;
+  letter-spacing: 0.04em;
+  box-shadow: 2px 2px 0 var(--ink);
+  color: var(--ink);
+}
+
+.toon-input {
+  border: 3px solid var(--ink);
+  background: #fff;
+  border-radius: 1rem;
+  padding: 0.7rem 1rem;
+  font-weight: 700;
+  color: var(--ink);
+  box-shadow: 3px 3px 0 var(--ink);
+  outline: none;
+}
+.toon-input::placeholder { color: rgba(48, 80, 102, 0.45); }
+.toon-input:focus { box-shadow: 4px 4px 0 var(--pink); }
+
+@keyframes toon-bounce {
+  0%, 100% { transform: translateY(0); }
+  50% { transform: translateY(-6px); }
+}
+.toon-bounce { animation: toon-bounce 1.2s ease-in-out infinite; }
+
+@keyframes toon-shimmer {
+  0% { background-position: 200% 0; }
+  100% { background-position: -200% 0; }
+}
